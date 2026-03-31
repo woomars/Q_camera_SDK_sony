@@ -9,3 +9,7 @@ Release/
 *.user
 *.suo
 .vscode/
+.cache/
+.dotnet-home/
+.nuget-packages/
+build-*/

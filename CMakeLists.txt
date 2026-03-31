@@ -9,6 +9,7 @@ include_directories(src/include)
 # Native SDK DLL
 add_library(CameraCore SHARED src/CameraCore/CameraCore.cpp)
 target_compile_definitions(CameraCore PRIVATE CAMERASDK_EXPORTS)
+target_link_libraries(CameraCore PRIVATE Mfplat.lib Mf.lib Mfreadwrite.lib Mfuuid.lib shlwapi.lib)
 
 # Output directory for the DLL
 set_target_properties(CameraCore PROPERTIES 

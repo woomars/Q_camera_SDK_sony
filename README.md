@@ -1,51 +1,86 @@
 # Q Camera SDK (Sony 13MP UVC)
 
-본 프로젝트는 13MP UVC 호환 USB 카메라 모듈(Infineon CX3 기반)을 제어하기 위한 Windows 기반 SDK 및 데모 애플리케이션입니다.
-머신 비전 장비 제어기의 Trigger 신호를 받아 논스톱 스냅샷(Flying Vision) 촬영을 제어하기 위해 설계되었습니다.
+Windows 기반 UVC 카메라 제어/촬영 프로젝트입니다.  
+현재 기준 운영 정책은 **NV12 고정 + 24fps 목표**입니다.
 
-## 프로젝트 구조 (Architecture)
+## 1. 현재 정책 (중요)
+- 포맷: **NV12 고정 파이프라인**
+- 목표 성능: **24fps**
+- 기본 해상도: **3840x2160**
+- 녹화 시작 가드: Negotiated 값이 `NV12` 이고 `>= 23.5fps` 일 때만 Record 허용
+- 노출(Exposure): UI 제한 `-11 ~ -5` (UVC log2)
 
-본 시스템은 두 개의 주요 계층으로 분리되어 있습니다:
+## 2. 프로젝트 구조
+- `src/CameraCore` (C++): Media Foundation/UVC 네이티브 코어 (`CameraCore.dll`)
+- `src/CameraSDK` (C#): P/Invoke 래퍼 (`CameraSDK.dll`)
+- `src/CameraDemo` (C# WPF): 미리보기/녹화/일괄 저장 UI
+- `src/CameraCli` (C#): FPS/파라미터 검증용 CLI
 
-- **src/CameraCore (C++ Native SDK):** 
-  - UVC 드라이버(DirectShow / Media Foundation)를 통해 카메라 하드웨어에 접근하는 핵심 C++ 라이브러리입니다.
-  - 노출(Exposure), 게인(Gain), 트리거 모드(Hardware/Software) 설정 API를 제공합니다.
-  - `CameraCore.dll`로 빌드됩니다.
+## 3. CameraDemo UI 반영 사항
 
-- **src/CameraSDK (C# Managed Wrapper):**
-  - C++ `CameraCore.dll`의 함수들을 P/Invoke를 통해 C# 환경에서 쉽게 사용할 수 있도록 매핑한 .NET 라이브러리입니다.
-  - `CameraSDK.dll`로 빌드됩니다.
+### 3.1 오른쪽 패널 구성 순서
+- `Image Settings`
+- `Control Panel`
+- `Camera Controls`
 
-- **src/CameraDemo (C# WPF 데모 앱):**
-  - SDK 기능을 활용하여 카메라 실시간 스트리밍, 노출/게인 파라미터 제어, 트리거 캡처 동작을 테스트해 볼 수 있는 사용자 인터페이스(GUI) 프로그램입니다.
+### 3.2 Image Settings
+- `Auto Exposure (AEC)` 체크박스
+- `Exposure`/`Gain`/`Focus Mode`/`Manual Focus`
+- 슬라이더/값 입력 시 **즉시 반영**
 
-## 요구 사항 및 환경 (Prerequisites)
+### 3.3 Focus 동작
+- `Auto Focus` / `Manual Focus` 모드 지원
+- 녹화 중에는 포커스/자동보정 잠금(촬영 안정화 목적)
 
-- **OS:** Windows 10 / 11 (x64)
-- **개발 도구:** Visual Studio 2022 (Community 이상 권장)
-  - 필요 워크로드: `.NET 데스크톱 개발`, `C++를 사용한 데스크톱 개발`
-- **.NET SDK:** .NET 8.0 이상
-- **CMake:** C++ Core 라이브러리 빌드 시 필요 (버전 3.10 이상)
+### 3.4 Control Panel
+- Brightness / Contrast / Saturation / Sharpness
+- Backlight ON/OFF 토글
+- 각 값은 즉시 반영
 
-## 빌드 및 실행 방법 (Build & Run)
+### 3.5 Camera Controls
+- Connection, Performance, Resolution
+- Negotiated mode, Active pipeline
+- Applied(Exp/Gain) 표시
 
-### 1단계: C++ Core SDK 빌드
-프로젝트 루트 폴더에서 CMake를 사용해 빌드 환경을 구성하고 컴파일합니다.
+### 3.6 로그 UI
+- 하단 로그는 `TextBox(ReadOnly)` 기반
+- 마우스 선택/복사 가능
+
+### 3.7 Trigger 기능 상태
+- `Trigger Mode`, `Software Trigger`, `Hardware Trigger` UI 제거
+- Trigger 관련 이벤트 및 SDK API 제거 (현재 프로젝트 범위에서 미사용)
+
+## 4. 로그 파일 위치
+- 런타임 로그: `src/CameraDemo/bin/Debug/net8.0-windows/camera_demo.log`
+- 하드웨어 capability 로그(도구 출력):  
+  `src/CameraDemo/bin/Debug/net8.0-windows/hardware_capabilities.log`
+
+## 5. 빌드/실행
+
+## 5.1 권장 스크립트
 ```bat
-mkdir build
-cmake -B build -S .
-cmake --build build --config Release
+scripts\windows\doctor.cmd
+scripts\windows\build_native.cmd
+scripts\windows\build_managed.cmd
+scripts\windows\build_all.cmd
 ```
-성공 시 `build/bin/Release/CameraCore.dll` 파일이 생성됩니다.
 
-### 2단계: C# WPF 데모 앱 실행
-Visual Studio 2022에서 `src/CameraDemo/CameraDemo.csproj`를 열고 실행(F5) 하거나, .NET CLI를 통해 터미널에서 직접 실행할 수 있습니다.
+## 5.2 CameraDemo 실행
 ```bat
-cd src/CameraDemo
-dotnet run -c Release
+dotnet run --project src/CameraDemo/CameraDemo.csproj -c Debug
 ```
 
-## 핵심 제어 API (예상 사양)
-- **최소 노출 시간 (Exposure):** 1us (하드웨어 제약사항 검토 중)
-- **최대 프레임레이트:** 25 fps
-- **트리거 동기화:** 20~30mm/s 선형 스테이지 이동 속도에 맞춘 하드웨어 인터럽트 제어
+## 5.3 CameraCli 예시
+```bat
+dotnet run --project src/CameraCli/CameraCli.csproj -c Debug -- --mode nv12 --width 3840 --height 2160 --runs 5 --seconds 2 --warmup 1
+```
+
+## 6. 24fps 실측 참고
+- 해상도별 24fps 실측 요약 문서:
+  - `reports/24fps_resolution_summary_2026-03-31.md`
+
+## 7. 주의사항
+- `0x80070005`가 발생하면 카메라 점유/권한 문제일 가능성이 큼
+  - Teams/Zoom/카메라앱/기존 Demo/CLI 종료 후 재시도
+- USB 3.0 연결 상태 권장
+- Visual Studio에서 실행이 잘 되어도, CLI/터미널 실행 시 점유 프로세스 때문에 실패할 수 있음

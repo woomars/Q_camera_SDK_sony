@@ -1,8 +1,47 @@
 using System.Windows;
+using System.Threading;
 
 namespace CameraDemo
 {
-    public partial class App : Application
+    public partial class App : System.Windows.Application
     {
+        private const string SingleInstanceMutexName = @"Global\CameraDemo_SingleInstance";
+        private Mutex? _singleInstanceMutex;
+
+        protected override void OnStartup(StartupEventArgs e)
+        {
+            bool createdNew;
+            _singleInstanceMutex = new Mutex(true, SingleInstanceMutexName, out createdNew);
+            if (!createdNew)
+            {
+                System.Windows.MessageBox.Show(
+                    "CameraDemo가 이미 실행 중입니다.\n중복 실행을 방지하기 위해 새 인스턴스를 종료합니다.",
+                    "중복 실행 방지",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                Shutdown();
+                return;
+            }
+
+            base.OnStartup(e);
+            this.DispatcherUnhandledException += (s, args) =>
+            {
+                System.IO.File.WriteAllText("crash.log", args.Exception.ToString());
+                System.Windows.MessageBox.Show("Crash: " + args.Exception.ToString(), "Fatal Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                args.Handled = true;
+            };
+
+            var main = new MainWindow();
+            MainWindow = main;
+            main.Show();
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            _singleInstanceMutex?.ReleaseMutex();
+            _singleInstanceMutex?.Dispose();
+            _singleInstanceMutex = null;
+            base.OnExit(e);
+        }
     }
 }
