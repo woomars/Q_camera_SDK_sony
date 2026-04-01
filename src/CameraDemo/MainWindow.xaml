@@ -81,11 +81,11 @@
             <Setter Property="Width" Value="36"/>
             <Setter Property="Height" Value="26"/>
             <Setter Property="Padding" Value="0"/>
-            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontSize" Value="11"/>
             <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Background" Value="#1E2F4E"/>
-            <Setter Property="BorderBrush" Value="#314A72"/>
-            <Setter Property="Foreground" Value="#D6E6FF"/>
+            <Setter Property="Background" Value="#0F131A"/>
+            <Setter Property="BorderBrush" Value="#0F131A"/>
+            <Setter Property="Foreground" Value="#BFD2EE"/>
         </Style>
         <Style TargetType="TextBlock" x:Key="LabelText">
             <Setter Property="Foreground" Value="#AFC0DE"/>
@@ -322,7 +322,13 @@
             <RowDefinition Height="236"/>
         </Grid.RowDefinitions>
 
-        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" Style="{StaticResource CardBorder}" Background="{StaticResource PanelBrush}">
+        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0"
+                Margin="-10,-10,-10,0"
+                Background="#11151D"
+                BorderBrush="#2B3240"
+                BorderThickness="0,0,0,1"
+                CornerRadius="0"
+                Padding="12,4">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -335,19 +341,19 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="Q-Camera : Sony 13MP - IMX258"
                                Foreground="#00DAF3"
-                               FontSize="20"
+                               FontSize="13"
                                FontWeight="Bold"
                                VerticalAlignment="Center"/>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Button x:Name="MinimizeBtn" Content="─" Style="{StaticResource TitleBarButton}" Click="MinimizeBtn_Click" Margin="0,0,6,0"/>
-                        <Button x:Name="MaxRestoreBtn" Content="▢" Style="{StaticResource TitleBarButton}" Click="MaxRestoreBtn_Click" Margin="0,0,6,0"/>
-                        <Button x:Name="CloseBtn" Content="✕" Style="{StaticResource TitleBarButton}" Click="CloseBtn_Click" Background="#7A2E3B" BorderBrush="#A64656"/>
+                        <Button x:Name="MinimizeBtn" Content="─" Style="{StaticResource TitleBarButton}" Width="32" Height="22" Click="MinimizeBtn_Click" Margin="0,0,4,0"/>
+                        <Button x:Name="MaxRestoreBtn" Content="▢" Style="{StaticResource TitleBarButton}" Width="32" Height="22" Click="MaxRestoreBtn_Click" Margin="0,0,4,0"/>
+                        <Button x:Name="CloseBtn" Content="✕" Style="{StaticResource TitleBarButton}" Width="32" Height="22" Click="CloseBtn_Click" Background="#632734" BorderBrush="#632734"/>
                     </StackPanel>
                 </Grid>
                 <Border x:Name="TargetCameraAlertBar"
                         Grid.Row="1"
-                        Margin="0,8,0,0"
-                        Padding="10,6"
+                        Margin="0,3,0,0"
+                        Padding="8,4"
                         Background="#5C1E1E"
                         BorderBrush="#D45A5A"
                         BorderThickness="1"
@@ -356,7 +362,8 @@
                     <TextBlock x:Name="TargetCameraAlertText"
                                Text="Sony camera warning"
                                Foreground="#FFECEC"
-                               FontWeight="SemiBold"/>
+                               FontWeight="SemiBold"
+                               FontSize="12"/>
                 </Border>
             </Grid>
         </Border>
@@ -449,6 +456,26 @@
                                        Margin="0,8,0,0"
                                        HorizontalAlignment="Center"/>
                         </StackPanel>
+                    </Border>
+                    <Border x:Name="CenterWarningOverlay"
+                            Background="#960A0F18"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch">
+                        <Border Background="#E01C2434"
+                                BorderBrush="#E35E6D"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Padding="24,16"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                            <TextBlock x:Name="CenterWarningText"
+                                       Text="Warning"
+                                       Foreground="#FFE7EA"
+                                       FontSize="28"
+                                       FontWeight="Bold"
+                                       TextAlignment="Center"/>
+                        </Border>
                     </Border>
                 </Grid>
             </Border>

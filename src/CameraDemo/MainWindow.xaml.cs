@@ -42,6 +42,7 @@ namespace CameraDemo
         private int _recordedFrameCount = 0;
         private bool _recordInMemoryOnly = false;
         private int _recordDroppedByQueue = 0;
+        private bool _hasUnsavedCapture = false;
         private readonly List<RawFrameChunk> _recordedFramesMemory = new List<RawFrameChunk>();
         private readonly object _recordedFramesLock = new object();
 
@@ -79,6 +80,10 @@ namespace CameraDemo
         private int _lastInitHr = 0;
         private readonly DispatcherTimer _reconnectTimer;
         private bool _reconnectInProgress = false;
+        private readonly DispatcherTimer _centerWarningTimer;
+        private bool _resolutionChangeAllowedByUserStop = true;
+        private bool _suppressResolutionSelectionChanged = false;
+        private int _lastValidResolutionIndex = 0;
 
         public MainWindow()
         {
@@ -87,6 +92,14 @@ namespace CameraDemo
             _logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "camera_demo.log");
             _reconnectTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             _reconnectTimer.Tick += ReconnectTimer_Tick;
+            _centerWarningTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.6) };
+            _centerWarningTimer.Tick += (s, e) =>
+            {
+                _centerWarningTimer.Stop();
+                if (CenterWarningOverlay != null) {
+                    CenterWarningOverlay.Visibility = Visibility.Collapsed;
+                }
+            };
 
             ConfigureExposureRangeForTargetFps();
 
@@ -125,6 +138,7 @@ namespace CameraDemo
             };
 
             ResolutionCombo.SelectionChanged += ResolutionCombo_SelectionChanged;
+            _lastValidResolutionIndex = ResolutionCombo.SelectedIndex >= 0 ? ResolutionCombo.SelectedIndex : 0;
 
             StartStopBtn.Click += (s, e) => ToggleCapture();
             RecordBtn.Click += RecordBtn_Click;
@@ -164,6 +178,8 @@ namespace CameraDemo
             Log($"Log file: {_logFilePath}");
             UpdateStatusDisplayMode();
             UpdatePreviewStoppedOverlay();
+            UpdateBatchSaveButtonState();
+            UpdateResolutionControlState();
 
             if (_cameraReady && _targetCameraReady)
             {
@@ -248,14 +264,14 @@ namespace CameraDemo
                 {
                     System.Windows.MessageBox.Show(
                         (!targetDetected
-                            ? "Sony 카메라를 찾지 못했습니다.\n"
-                            : "내장 카메라가 선택되었습니다. Sony 카메라를 선택해 주세요.\n") +
-                        "카메라 연결 상태를 확인해 주세요.\n\n" +
-                        "점검 항목:\n" +
-                        "1) Sony 카메라 USB 3.0 케이블/포트 연결 확인\n" +
-                        "2) 다른 카메라 앱(Teams/Zoom/카메라 앱) 종료\n" +
-                        "3) 장치 관리자에서 Sony/IMX258 인식 여부 확인",
-                        "카메라 연결 점검 필요",
+                            ? "Sony camera was not detected.\n"
+                            : "An internal camera is selected. Please select the Sony camera.\n") +
+                        "Please check camera connection status.\n\n" +
+                        "Checklist:\n" +
+                        "1) Check Sony camera USB 3.0 cable/port\n" +
+                        "2) Close other camera apps (Teams/Zoom/Camera app)\n" +
+                        "3) Verify Sony/IMX258 detection in Device Manager",
+                        "Camera Connection Check Required",
                         MessageBoxButton.OK,
                         MessageBoxImage.Error);
                 });
@@ -280,6 +296,9 @@ namespace CameraDemo
             if (nsub != Nv12Subtype || nfps < TargetFps - 0.5) {
                 Log($"Warning: negotiated mode is {nw}x{nh} @ {nfps:F2} ({nsubName}), below NV12 {TargetFps:F0}fps target.");
             }
+            if (ResolutionCombo != null && ResolutionCombo.SelectedIndex >= 0) {
+                _lastValidResolutionIndex = ResolutionCombo.SelectedIndex;
+            }
             return true;
         }
 
@@ -288,20 +307,20 @@ namespace CameraDemo
             Log($"Error: Camera SDK failed to initialize. HRESULT=0x{hr:X8}");
             if (hr == unchecked((int)0x80070005)) {
                 System.Windows.MessageBox.Show(
-                    "카메라 접근이 거부되었습니다 (0x80070005).\n" +
-                    "1) Teams/Zoom/카메라앱/브라우저 카메라 사용 탭 종료\n" +
-                    "2) Windows 카메라 권한(데스크톱 앱 포함) ON\n" +
-                    "3) Sony 카메라 재연결 후 잠시 대기\n" +
-                    "앱이 자동 재시도를 계속 수행합니다.",
-                    "카메라 점유/권한 문제",
+                    "Camera access was denied (0x80070005).\n" +
+                    "1) Close Teams/Zoom/Camera app/browser camera tabs\n" +
+                    "2) Turn ON Windows camera permission (including desktop apps)\n" +
+                    "3) Reconnect Sony camera and wait briefly\n" +
+                    "Auto-retry will continue.",
+                    "Camera Occupied / Permission Issue",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
             } else if (hr == unchecked((int)0xC00D36D5)) {
                 System.Windows.MessageBox.Show(
-                    "카메라 장치를 찾지 못했습니다 (0xC00D36D5).\n" +
-                    "Sony 카메라 C-type 연결 상태를 확인해 주세요.\n" +
-                    "앱이 자동 재시도를 계속 수행합니다.",
-                    "카메라 미검출",
+                    "Camera device was not found (0xC00D36D5).\n" +
+                    "Please check Sony camera USB-C connection.\n" +
+                    "Auto-retry will continue.",
+                    "Camera Not Detected",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
             }
@@ -401,6 +420,7 @@ namespace CameraDemo
                 UpdateAutoControlUiState();
                 UpdateFocusUiState();
             }
+            UpdateResolutionControlState();
         }
 
         private void LockFocusForRecording()
@@ -510,6 +530,58 @@ namespace CameraDemo
             if (SavingProgressText != null) {
                 SavingProgressText.Text = $"{done} / {total}";
             }
+        }
+
+        private bool HasSavableFrames()
+        {
+            if (!_hasUnsavedCapture) {
+                return false;
+            }
+
+            if (_recordedFrameCount <= 0) {
+                return false;
+            }
+
+            if (_recordInMemoryOnly) {
+                lock (_recordedFramesLock) {
+                    return _recordedFramesMemory.Count > 0;
+                }
+            }
+
+            return !string.IsNullOrWhiteSpace(_spoolRawPath)
+                && File.Exists(_spoolRawPath)
+                && _spoolTask != null
+                && _spoolTask.IsCompleted;
+        }
+
+        private void UpdateBatchSaveButtonState()
+        {
+            if (BatchSaveBtn == null) return;
+            BatchSaveBtn.IsEnabled = !_isRecording && !_isBatchSaving;
+        }
+
+        private bool CanChangeResolution()
+        {
+            return !_isRunning && !_isRecording && !_isBatchSaving && _resolutionChangeAllowedByUserStop;
+        }
+
+        private void UpdateResolutionControlState()
+        {
+            if (ResolutionCombo != null) {
+                ResolutionCombo.IsEnabled = CanChangeResolution();
+            }
+        }
+
+        private void ShowCenterWarning(string message)
+        {
+            if (CenterWarningText != null) {
+                CenterWarningText.Text = message;
+            }
+            if (CenterWarningOverlay != null) {
+                CenterWarningOverlay.Visibility = Visibility.Visible;
+            }
+            _centerWarningTimer.Stop();
+            _centerWarningTimer.Start();
         }
 
         private void BindSliderInput(System.Windows.Controls.Slider slider, System.Windows.Controls.TextBox input)
@@ -763,7 +835,7 @@ namespace CameraDemo
         private void RecordBtn_Click(object sender, RoutedEventArgs e)
         {
             if (!_cameraReady || !_targetCameraReady) {
-                System.Windows.MessageBox.Show("Sony 카메라가 준비되지 않았습니다. 먼저 연결 상태를 확인해 주세요.", "카메라 연결 점검 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
+                System.Windows.MessageBox.Show("Sony camera is not ready. Please check camera connection first.", "Camera Connection Check Required", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -772,13 +844,17 @@ namespace CameraDemo
                 return;
             }
 
+            if (!_isRecording && _autoExposureSupported && AutoExposureCheck.IsChecked == true) {
+                Log("Recording blocked: Auto Exposure mode is enabled.");
+                ShowCenterWarning("AUTO EXPOSURE ON\nRecording is blocked.");
+                return;
+            }
+
             if (!_isRecording) {
-                bool autoExpWarn = _autoExposureSupported && AutoExposureCheck.IsChecked == true;
                 bool autoFocusWarn = _selectedFocusMode == FocusMode.Auto;
-                if (autoExpWarn || autoFocusWarn) {
+                if (autoFocusWarn) {
                     string warning =
-                        (autoExpWarn ? "Auto Exposure is enabled in preview. Recording uses manual exposure values.\n" : "") +
-                        (autoFocusWarn ? "Focus mode is Auto. Right before recording, autofocus will run once, then recording proceeds in manual focus.\n" : "") +
+                        "Focus mode is Auto. Right before recording, autofocus will run once, then recording proceeds in manual focus.\n" +
                         $"\nManual values to apply:\nExposure={ExposureSlider.Value:0}, Gain={GainSlider.Value:0}, Focus={_manualFocusValue:0}\n\n" +
                         "Do you want to continue recording?";
                     var confirm = System.Windows.MessageBox.Show(
@@ -816,7 +892,8 @@ namespace CameraDemo
                 if (RecordingOverlay != null) RecordingOverlay.Visibility = Visibility.Collapsed;
                 if (_recordInMemoryOnly) {
                     Log($"Recording stopped manually. Memory capture completed. Total {_recordedFrameCount} frames (queue drop {_recordDroppedByQueue}).");
-                    BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
+                    _hasUnsavedCapture = _recordedFrameCount > 0;
+                    UpdateBatchSaveButtonState();
                 } else {
                     _rawQueue?.CompleteAdding(); // Let the background spooler finish remaining items
                     Log($"Recording stopped manually. Spooling remaining frames to SSD... (queue drop {_recordDroppedByQueue})");
@@ -825,7 +902,8 @@ namespace CameraDemo
                 ClearRecordedFramesMemory();
                 _recordedFrameCount = 0;
                 _recordDroppedByQueue = 0;
-                BatchSaveBtn.IsEnabled = false;
+                _hasUnsavedCapture = false;
+                UpdateBatchSaveButtonState();
                 _camera.ResetPerfStats();
                 UpdateRecordingPanelLockState();
                 
@@ -863,7 +941,8 @@ namespace CameraDemo
                         }
                         Dispatcher.BeginInvoke(() => {
                             Log($"SSD Spooling finished. Total {_recordedFrameCount} frames saved to temp. Queue drop {_recordDroppedByQueue}.");
-                            BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
+                            _hasUnsavedCapture = _recordedFrameCount > 0;
+                            UpdateBatchSaveButtonState();
                         });
                     });
                 }
@@ -892,22 +971,15 @@ namespace CameraDemo
                 return;
             }
 
-            if (_recordedFrameCount == 0) {
-                System.Windows.MessageBox.Show(
-                    "저장할 프레임이 없습니다.\n먼저 Recording을 수행한 후 저장해 주세요.",
-                    "저장 불가",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-                return;
-            }
-            if (!_recordInMemoryOnly && (string.IsNullOrWhiteSpace(_spoolRawPath) || !File.Exists(_spoolRawPath) || _spoolTask == null || !_spoolTask.IsCompleted)) {
-                System.Windows.MessageBox.Show("Please wait for SSD Spooling to finish.", "Wait");
+            if (!HasSavableFrames()) {
+                Log("Batch save blocked: no captured images available to save.");
+                ShowCenterWarning("No captured images available to save.");
                 return;
             }
 
             // Lock all controls first to avoid any state changes while save location is being chosen.
             _isBatchSaving = true;
-            BatchSaveBtn.IsEnabled = false;
+            UpdateBatchSaveButtonState();
             StartStopBtn.IsEnabled = false;
             RecordBtn.IsEnabled = false;
             UpdateRecordingPanelLockState();
@@ -916,7 +988,7 @@ namespace CameraDemo
             string? folder = null;
             using (var fbd = new System.Windows.Forms.FolderBrowserDialog())
             {
-                fbd.Description = "저장할 폴더를 선택하세요.";
+                fbd.Description = "Select a folder to save images.";
                 fbd.UseDescriptionForTitle = true;
                 if (fbd.ShowDialog() == System.Windows.Forms.DialogResult.OK) {
                     folder = fbd.SelectedPath;
@@ -927,7 +999,7 @@ namespace CameraDemo
                 _isBatchSaving = false;
                 StartStopBtn.IsEnabled = true;
                 RecordBtn.IsEnabled = true;
-                BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
+                UpdateBatchSaveButtonState();
                 UpdateRecordingPanelLockState();
                 UpdateSavingUiState(false);
                 Log("Batch save canceled (folder selection canceled).");
@@ -942,6 +1014,7 @@ namespace CameraDemo
             bool wasRunning = _isRunning;
             if (_isRunning) {
                 // Save path operates on stable buffers; pause preview first to avoid UI/capture contention.
+                _resolutionChangeAllowedByUserStop = false;
                 var stopTask = Task.Run(() => _camera.Stop());
                 var stopDone = await Task.WhenAny(stopTask, Task.Delay(2500));
                 if (stopDone == stopTask && stopTask.Result) {
@@ -952,15 +1025,15 @@ namespace CameraDemo
                 } else {
                     Log("Error: Preview stop timeout during batch save. Save aborted to avoid app freeze.");
                     System.Windows.MessageBox.Show(
-                        "Preview 정지가 지연되어 저장을 중단했습니다.\n" +
-                        "잠시 후 Stop Preview를 다시 누른 뒤 저장을 재시도해 주세요.",
+                        "Preview stop is delayed, so saving was aborted.\n" +
+                        "Press Stop Preview again after a moment, then retry saving.",
                         "Save Aborted",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
                     _isBatchSaving = false;
                     StartStopBtn.IsEnabled = true;
                     RecordBtn.IsEnabled = true;
-                    BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
+                    UpdateBatchSaveButtonState();
                     UpdateRecordingPanelLockState();
                     UpdateSavingUiState(false);
                     return;
@@ -1042,6 +1115,7 @@ namespace CameraDemo
                 Log("Batch encoding & save completed.");
                 Log($"Batch save elapsed: {(DateTime.UtcNow - batchStartUtc).TotalSeconds:F2}s");
                 Log($"Saved to: {folder}");
+                _hasUnsavedCapture = false;
             }
             catch (Exception ex)
             {
@@ -1053,14 +1127,15 @@ namespace CameraDemo
                 _isBatchSaving = false;
                 StartStopBtn.IsEnabled = true;
                 RecordBtn.IsEnabled = true;
-                BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
-                ResolutionCombo.IsEnabled = !_isRunning && !_isRecording && !_isBatchSaving;
+                UpdateBatchSaveButtonState();
+                UpdateResolutionControlState();
                 UpdateRecordingPanelLockState();
                 UpdateSavingUiState(false);
 
                 if (wasRunning && !_isRunning) {
                     if (_camera.Start()) {
                         _isRunning = true;
+                        _resolutionChangeAllowedByUserStop = false;
                         StartStopBtn.Content = "Stop Preview";
                         UpdatePreviewStoppedOverlay();
                         // StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 53, 69));
@@ -1094,8 +1169,8 @@ namespace CameraDemo
             if (!_cameraReady || !_targetCameraReady)
             {
                 System.Windows.MessageBox.Show(
-                    "Sony 카메라가 준비되지 않았습니다. 연결 상태를 확인해 주세요.\n앱이 자동 재시도 중입니다.",
-                    "카메라 연결 점검 필요",
+                    "Sony camera is not ready. Please check connection.\nThe app is auto-retrying.",
+                    "Camera Connection Check Required",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
                 if (!_reconnectTimer.IsEnabled) _reconnectTimer.Start();
@@ -1107,11 +1182,12 @@ namespace CameraDemo
                 if (_camera.Start())
                 {
                     _isRunning = true;
+                    _resolutionChangeAllowedByUserStop = false;
                     ApplyAutoControlsToCamera();
                     StartStopBtn.Content = "Stop Preview";
                     UpdatePreviewStoppedOverlay();
                     // StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 53, 69)); // Bootstrap Danger Red
-                    ResolutionCombo.IsEnabled = false;
+                    UpdateResolutionControlState();
                     UpdateRecordingPanelLockState();
                     Log("Preview started.");
                 }
@@ -1125,9 +1201,9 @@ namespace CameraDemo
                     StartStopBtn.IsEnabled = true;
                     Log("Warning: Camera stop timeout during hot-plug. Please retry after a moment.");
                     System.Windows.MessageBox.Show(
-                        "카메라 정지 응답이 지연되고 있습니다.\n" +
-                        "USB 재연결 직후에는 잠시 후 다시 시도해 주세요.",
-                        "카메라 응답 지연",
+                        "Camera stop response is delayed.\n" +
+                        "If this happened right after USB reconnect, please retry in a moment.",
+                        "Camera Response Delay",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
                     return;
@@ -1137,10 +1213,11 @@ namespace CameraDemo
                 if (stopped)
                 {
                     _isRunning = false;
+                    _resolutionChangeAllowedByUserStop = true;
                     StartStopBtn.Content = "Start Preview";
                     UpdatePreviewStoppedOverlay();
                     // StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(40, 167, 69)); // Bootstrap Success Green
-                    ResolutionCombo.IsEnabled = !_isRecording && !_isBatchSaving;
+                    UpdateResolutionControlState();
                     UpdateRecordingPanelLockState();
                     Log("Preview stopped.");
                 }
@@ -1178,7 +1255,8 @@ namespace CameraDemo
                         if (RecordingOverlay != null) RecordingOverlay.Visibility = Visibility.Collapsed;
                         if (_recordInMemoryOnly) {
                             Log($"Auto recording finished. Memory capture completed. Total {_recordedFrameCount} frames (queue drop {_recordDroppedByQueue}).");
-                            BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
+                            _hasUnsavedCapture = _recordedFrameCount > 0;
+                            UpdateBatchSaveButtonState();
                         } else {
                             _rawQueue?.CompleteAdding();
                             Log($"Auto recording finished. Spooling remaining frames... (queue drop {_recordDroppedByQueue})");
@@ -1319,20 +1397,38 @@ namespace CameraDemo
 
         private void ResolutionCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
-            if (_isRunning || _isRecording || _isBatchSaving) {
-                Log("Resolution change is disabled while preview/record/save is active.");
+            if (_suppressResolutionSelectionChanged) {
+                return;
+            }
+
+            if (!CanChangeResolution()) {
+                int attempted = ResolutionCombo.SelectedIndex;
+                _suppressResolutionSelectionChanged = true;
+                ResolutionCombo.SelectedIndex = _lastValidResolutionIndex;
+                _suppressResolutionSelectionChanged = false;
+                if (attempted != _lastValidResolutionIndex) {
+                    Log("Resolution change blocked: Preview must be in user-stopped state.");
+                }
                 return;
             }
 
             if (!TryGetSelectedResolution(out int width, out int height)) {
                 Log("Warning: Failed to parse selected resolution.");
+                _suppressResolutionSelectionChanged = true;
+                ResolutionCombo.SelectedIndex = _lastValidResolutionIndex;
+                _suppressResolutionSelectionChanged = false;
                 return;
             }
 
             Log($"Resolution preference changed to {width}x{height}. Reinitializing camera...");
             if (!ReinitializeCamera()) {
                 Log("Warning: Reinitialize failed after resolution change.");
+                _suppressResolutionSelectionChanged = true;
+                ResolutionCombo.SelectedIndex = _lastValidResolutionIndex;
+                _suppressResolutionSelectionChanged = false;
+                return;
             }
+            _lastValidResolutionIndex = ResolutionCombo.SelectedIndex;
         }
 
         private bool ReinitializeCamera()

@@ -21,8 +21,8 @@ namespace CameraDemo
             if (!createdNew)
             {
                 System.Windows.MessageBox.Show(
-                    "CameraDemo가 이미 실행 중입니다.\n중복 실행을 방지하기 위해 새 인스턴스를 종료합니다.",
-                    "중복 실행 방지",
+                    "CameraDemo is already running.\nThe new instance will be closed to prevent duplicate execution.",
+                    "Single Instance",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
                 Shutdown();

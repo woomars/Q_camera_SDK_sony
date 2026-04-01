@@ -21,13 +21,17 @@ Windows 기반 UVC 카메라 제어/촬영 프로젝트입니다.
 - 저장 중: 모든 메뉴 잠금 + 프리뷰 중앙 `SAVING...`/진행률 표시
 - 녹화 중: 프리뷰 중앙 `REC` 표시
 - Preview Off: 프리뷰 중앙 `PREVIEW STOPPED` 표시
+- 중앙 경고 오버레이: Recording/Save 차단 사유를 중앙 화면에 표시
 - Camera Controls 표시 항목: Connection / Resolution / Pipeline / Applied
 - Exposure/Gain/Focus 및 Control Panel 값은 슬라이더/텍스트 입력 시 즉시 반영
 - AEC/AF는 Preview 기준 동작, Recording 시에는 수동값으로 잠금
+- Auto Exposure ON 상태에서는 Recording 시작 차단
+- Preview가 사용자 `Stop Preview` 상태가 아니면 Resolution 변경 차단
 
 ## 4. 저장 동작
-- `Convert & Save All to Folder` 실행 시 폴더 선택 대화상자 없이 자동 폴더 생성
-- 저장 경로: `src/CameraDemo/bin/Debug/net8.0-windows/saved_frames/save_yyyyMMdd_HHmmss_fff`
+- `Convert & Save All to Folder` 실행 시 저장 위치 선택 창 표시
+- 저장 가능 조건: Recording 완료 후 미저장 캡처 데이터가 존재할 때
+- 저장할 이미지가 없으면 중앙 경고 표시 + 로그 기록 후 저장 차단
 - 저장 진행/완료/소요시간은 로그에 기록
 
 ## 5. 로그 파일
@@ -44,6 +48,7 @@ dotnet run --project src/CameraDemo/CameraDemo.csproj -c Debug
 ## 7. 참고 문서
 - 개발 변경 정리: `docs/개발_변경_정리_2026-04-01.md`
 - 성과물 목록: `docs/성과물_목록.md`
+- 기능 검증 브랜치: `codex/feature-validation` (생성 예정)
 
 ## 8. 필수 문서
 - SDK User manual: `docs/SDK_User_Manual.md`
