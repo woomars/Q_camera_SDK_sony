@@ -75,6 +75,12 @@ namespace CameraSDK
 
         [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Camera_GetLastHRESULT();
+
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Camera_IsTargetCameraDetected();
+
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Camera_IsSelectedCameraTarget();
         
         [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Camera_GetProcAmpRange(int property, out long min, out long max, out long step, out long def, out long caps);
@@ -235,6 +241,16 @@ namespace CameraSDK
         public int GetLastHRESULT()
         {
             return Camera_GetLastHRESULT();
+        }
+
+        public bool IsTargetCameraDetected()
+        {
+            return Camera_IsTargetCameraDetected() != 0;
+        }
+
+        public bool IsSelectedCameraTarget()
+        {
+            return Camera_IsSelectedCameraTarget() != 0;
         }
         
         public bool TryGetProcAmpRange(ProcAmpProperty property, out long min, out long max, out long step, out long def, out long caps)

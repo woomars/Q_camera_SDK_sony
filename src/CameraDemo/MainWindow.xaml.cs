@@ -16,6 +16,7 @@ namespace CameraDemo
 {
     public partial class MainWindow : Window
     {
+        // ---- Camera runtime / preview state ----
         private CameraManager _camera;
         private WriteableBitmap? _bitmap;
         private bool _isRunning = false;
@@ -40,9 +41,11 @@ namespace CameraDemo
         private string _spoolRawPath = string.Empty;
         private int _recordedFrameCount = 0;
         private bool _recordInMemoryOnly = false;
+        private int _recordDroppedByQueue = 0;
         private readonly List<RawFrameChunk> _recordedFramesMemory = new List<RawFrameChunk>();
         private readonly object _recordedFramesLock = new object();
 
+        // ---- Recording timing / frame bookkeeping ----
         private bool _isRecording = false;
         private DateTime _recordStartTimeUtc;
         private bool _recordDurationStarted = false;
@@ -69,12 +72,21 @@ namespace CameraDemo
         private readonly TimeSpan _previewUiInterval = TimeSpan.FromMilliseconds(66); // cap preview rendering to ~15fps
         private readonly object _logFileLock = new object();
         private readonly string _logFilePath;
+        private const int MaxLogChars = 120000;
+        // ---- Target Sony camera availability / reconnect ----
+        private bool _targetCameraReady = true;
+        private bool _cameraReady = false;
+        private int _lastInitHr = 0;
+        private readonly DispatcherTimer _reconnectTimer;
+        private bool _reconnectInProgress = false;
 
         public MainWindow()
         {
             InitializeComponent();
             _camera = new CameraManager();
             _logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "camera_demo.log");
+            _reconnectTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            _reconnectTimer.Tick += ReconnectTimer_Tick;
 
             ConfigureExposureRangeForTargetFps();
 
@@ -136,20 +148,12 @@ namespace CameraDemo
             AutoExposureCheck.Unchecked += AutoControlCheck_Changed;
             BacklightToggle.Checked += BacklightToggle_Changed;
             BacklightToggle.Unchecked += BacklightToggle_Changed;
+            StatusOnPreviewToggle.Checked += StatusOnPreviewToggle_Changed;
+            StatusOnPreviewToggle.Unchecked += StatusOnPreviewToggle_Changed;
 
             if (!InitializeCamera()) {
-                int hr = _camera.GetLastHRESULT();
-                Log($"Error: Camera SDK failed to initialize. HRESULT=0x{hr:X8}");
-                if (hr == unchecked((int)0x80070005)) {
-                    System.Windows.MessageBox.Show(
-                        "카메라 접근이 거부되었습니다 (0x80070005).\n" +
-                        "1) 다른 카메라 앱(Teams/Zoom/카메라앱/기존 CameraDemo/CLI) 종료\n" +
-                        "2) Windows 카메라 권한(데스크톱 앱 포함) ON\n" +
-                        "3) USB 카메라 재연결 후 다시 실행",
-                        "카메라 점유/권한 문제",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
-                }
+                ShowInitFailureMessage(_lastInitHr);
+                _reconnectTimer.Start();
             }
             UpdateFocusUiState();
 
@@ -158,10 +162,54 @@ namespace CameraDemo
             _statusTimer.Tick += StatusTimer_Tick;
             _statusTimer.Start();
             Log($"Log file: {_logFilePath}");
+            UpdateStatusDisplayMode();
+            UpdatePreviewStoppedOverlay();
+
+            if (_cameraReady && _targetCameraReady)
+            {
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (!_isRunning) ToggleCapture();
+                }), DispatcherPriority.Background);
+            }
+        }
+
+        private void TitleBarRegion_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (e.ClickCount == 2)
+            {
+                WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+                return;
+            }
+
+            if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed)
+            {
+                DragMove();
+            }
+        }
+
+        private void MinimizeBtn_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState.Minimized;
+        }
+
+        private void MaxRestoreBtn_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        }
+
+        private void CloseBtn_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
         }
 
         private bool InitializeCamera()
         {
+            // Always re-evaluate camera availability on each initialize/reinitialize path.
+            _targetCameraReady = false;
+            _cameraReady = false;
+            _lastInitHr = 0;
+
             if (!TryGetSelectedResolution(out int prefWidth, out int prefHeight)) {
                 prefWidth = 3840;
                 prefHeight = 2160;
@@ -177,7 +225,44 @@ namespace CameraDemo
             }
 
             if (!_camera.Initialize()) {
+                _lastInitHr = _camera.GetLastHRESULT();
+                SetTargetCameraAlert($"Camera initialize failed (0x{_lastInitHr:X8}). Reconnect Sony camera and wait for auto-retry.");
                 return false;
+            }
+
+            bool targetDetected = _camera.IsTargetCameraDetected();
+            bool selectedTarget = _camera.IsSelectedCameraTarget();
+            if (!targetDetected || !selectedTarget) {
+                _targetCameraReady = false;
+                _cameraReady = false;
+                string alertMsg;
+                if (!targetDetected) {
+                    alertMsg = "Sony camera not detected. Check camera connection (USB cable/port/device manager).";
+                } else {
+                    alertMsg = "Wrong camera selected (likely internal camera). Please select/connect Sony camera.";
+                }
+
+                SetTargetCameraAlert(alertMsg);
+                Log($"ERROR: {alertMsg}");
+                Dispatcher.BeginInvoke(() =>
+                {
+                    System.Windows.MessageBox.Show(
+                        (!targetDetected
+                            ? "Sony 카메라를 찾지 못했습니다.\n"
+                            : "내장 카메라가 선택되었습니다. Sony 카메라를 선택해 주세요.\n") +
+                        "카메라 연결 상태를 확인해 주세요.\n\n" +
+                        "점검 항목:\n" +
+                        "1) Sony 카메라 USB 3.0 케이블/포트 연결 확인\n" +
+                        "2) 다른 카메라 앱(Teams/Zoom/카메라 앱) 종료\n" +
+                        "3) 장치 관리자에서 Sony/IMX258 인식 여부 확인",
+                        "카메라 연결 점검 필요",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                });
+            } else {
+                SetTargetCameraAlert(null);
+                _targetCameraReady = true;
+                _cameraReady = true;
             }
 
             _camera.OnFrameReceived += UpdateFrame;
@@ -191,11 +276,72 @@ namespace CameraDemo
             double nfps = _camera.GetNegotiatedFPS();
             int nsub = _camera.GetNegotiatedSubtype();
             string nsubName = nsub == 1 ? "NV12" : "Unknown";
-            NegotiatedModeText.Text = $"{nw}x{nh} @ {nfps:F2} ({nsubName})";
+            NegotiatedModeText.Text = $"{prefWidth} x {prefHeight}";
             if (nsub != Nv12Subtype || nfps < TargetFps - 0.5) {
                 Log($"Warning: negotiated mode is {nw}x{nh} @ {nfps:F2} ({nsubName}), below NV12 {TargetFps:F0}fps target.");
             }
             return true;
+        }
+
+        private void ShowInitFailureMessage(int hr)
+        {
+            Log($"Error: Camera SDK failed to initialize. HRESULT=0x{hr:X8}");
+            if (hr == unchecked((int)0x80070005)) {
+                System.Windows.MessageBox.Show(
+                    "카메라 접근이 거부되었습니다 (0x80070005).\n" +
+                    "1) Teams/Zoom/카메라앱/브라우저 카메라 사용 탭 종료\n" +
+                    "2) Windows 카메라 권한(데스크톱 앱 포함) ON\n" +
+                    "3) Sony 카메라 재연결 후 잠시 대기\n" +
+                    "앱이 자동 재시도를 계속 수행합니다.",
+                    "카메라 점유/권한 문제",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            } else if (hr == unchecked((int)0xC00D36D5)) {
+                System.Windows.MessageBox.Show(
+                    "카메라 장치를 찾지 못했습니다 (0xC00D36D5).\n" +
+                    "Sony 카메라 C-type 연결 상태를 확인해 주세요.\n" +
+                    "앱이 자동 재시도를 계속 수행합니다.",
+                    "카메라 미검출",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+
+        private async void ReconnectTimer_Tick(object? sender, EventArgs e)
+        {
+            // Guard against re-entry while recording/saving or while another reconnect attempt is active.
+            if (_reconnectInProgress || _cameraReady || _isRunning || _isRecording || _isBatchSaving) {
+                return;
+            }
+
+            _reconnectInProgress = true;
+            try {
+                Log("Auto-retry: trying to reconnect Sony camera...");
+                await Task.Run(() =>
+                {
+                    try { _camera?.Dispose(); } catch { }
+                });
+
+                _camera = new CameraManager();
+                bool ok = InitializeCamera();
+                if (ok && _cameraReady && _targetCameraReady) {
+                    Log("Auto-retry: Sony camera connected successfully.");
+                    _reconnectTimer.Stop();
+                }
+            } finally {
+                _reconnectInProgress = false;
+            }
+        }
+
+        private void SetTargetCameraAlert(string? message)
+        {
+            bool show = !string.IsNullOrWhiteSpace(message);
+            if (TargetCameraAlertBar != null) {
+                TargetCameraAlertBar.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            }
+            if (TargetCameraAlertText != null) {
+                TargetCameraAlertText.Text = show ? message! : string.Empty;
+            }
         }
 
         private void ApplyUiValuesToCamera()
@@ -219,9 +365,42 @@ namespace CameraDemo
         private void UpdateFocusUiState()
         {
             bool manual = _selectedFocusMode == FocusMode.Manual;
-            FocusSlider.IsEnabled = manual && !_isRecording;
-            FocusModeCombo.IsEnabled = !_isRecording;
+            FocusSlider.IsEnabled = manual && !_isRecording && !_isBatchSaving;
+            FocusValue.IsEnabled = manual && !_isRecording && !_isBatchSaving;
+            FocusModeCombo.IsEnabled = !_isRecording && !_isBatchSaving;
             FocusValue.Foreground = manual ? System.Windows.Media.Brushes.White : System.Windows.Media.Brushes.Gray;
+        }
+
+        private void UpdateRecordingPanelLockState()
+        {
+            // Single lock gate for recording and batch-save periods.
+            bool locked = _isRecording || _isBatchSaving;
+            CaptureDurationCombo.IsEnabled = !locked;
+
+            AutoExposureCheck.IsEnabled = _autoExposureSupported && !locked;
+            ExposureValue.IsEnabled = !locked;
+            GainSlider.IsEnabled = !locked;
+            GainValue.IsEnabled = !locked;
+            FocusModeCombo.IsEnabled = !locked;
+            FocusValue.IsEnabled = !locked;
+
+            BrightnessSlider.IsEnabled = !locked;
+            BrightnessValue.IsEnabled = !locked;
+            ContrastSlider.IsEnabled = !locked;
+            ContrastValue.IsEnabled = !locked;
+            SaturationSlider.IsEnabled = !locked;
+            SaturationValue.IsEnabled = !locked;
+            SharpnessSlider.IsEnabled = !locked;
+            SharpnessValue.IsEnabled = !locked;
+            BacklightToggle.IsEnabled = _backlightSupported && !locked;
+
+            if (locked) {
+                ExposureSlider.IsEnabled = false;
+                FocusSlider.IsEnabled = false;
+            } else {
+                UpdateAutoControlUiState();
+                UpdateFocusUiState();
+            }
         }
 
         private void LockFocusForRecording()
@@ -230,20 +409,29 @@ namespace CameraDemo
             _autoExposureBeforeRecording = AutoExposureCheck.IsChecked == true;
             _backlightOnBeforeRecording = BacklightToggle.IsChecked == true;
 
+            // Recording always uses manual exposure conditions for deterministic capture.
             if (_autoExposureSupported) AutoExposureCheck.IsChecked = false;
-            if (_backlightSupported) BacklightToggle.IsChecked = false;
             ApplyAutoControlsToCamera();
-            if (_backlightSupported) {
-                _camera.SetProcAmpValue(ProcAmpProperty.BacklightCompensation, 0);
-            }
 
             AutoExposureCheck.IsEnabled = false;
             BacklightToggle.IsEnabled = false;
 
+            if (_focusModeBeforeRecording == FocusMode.Auto) {
+                // Snapshot autofocus result right before recording, then lock to manual.
+                _camera.SetFocusMode(FocusMode.Auto);
+                Thread.Sleep(120);
+                int afValue = _camera.GetFocus();
+                if (afValue >= 0) {
+                    _manualFocusValue = afValue;
+                    FocusSlider.Value = _manualFocusValue;
+                    FocusValue.Text = _manualFocusValue.ToString();
+                }
+            }
+
             _camera.SetFocusMode(FocusMode.Manual);
             _camera.SetFocus(_manualFocusValue);
             UpdateFocusUiState();
-            Log("Focus and auto image controls locked to manual during recording.");
+            Log("Focus locked to manual during recording. Auto exposure is disabled during recording.");
         }
 
         private void RestoreFocusAfterRecording()
@@ -263,12 +451,65 @@ namespace CameraDemo
             ApplyFocusToCamera();
             UpdateFocusUiState();
             UpdateAutoControlUiState();
+            UpdateRecordingPanelLockState();
             Log($"Focus mode restored: {_selectedFocusMode}");
         }
 
         private void UpdateActiveModeText()
         {
             ActiveModeText.Text = "NV12 -> NV12 (Fixed)";
+            PanelActiveModeText.Text = ActiveModeText.Text;
+        }
+
+        private void StatusOnPreviewToggle_Changed(object sender, RoutedEventArgs e)
+        {
+            UpdateStatusDisplayMode();
+        }
+
+        private void UpdateStatusDisplayMode()
+        {
+            bool showOnPreview = StatusOnPreviewToggle.IsChecked == true;
+            StatusOnPreviewToggle.Content = showOnPreview ? "ON" : "OFF";
+            if (PreviewHudStatusContainer != null) {
+                PreviewHudStatusContainer.Visibility = showOnPreview ? Visibility.Visible : Visibility.Collapsed;
+            }
+            if (PreviewBottomStatusCards != null) {
+                PreviewBottomStatusCards.Visibility = showOnPreview ? Visibility.Visible : Visibility.Collapsed;
+            }
+            if (PanelStatusContainer != null) {
+                PanelStatusContainer.Visibility = showOnPreview ? Visibility.Hidden : Visibility.Visible;
+            }
+        }
+
+        private void UpdatePreviewStoppedOverlay()
+        {
+            if (PreviewStoppedOverlay != null) {
+                PreviewStoppedOverlay.Visibility = _isRunning ? Visibility.Collapsed : Visibility.Visible;
+            }
+        }
+
+        private void UpdateSavingUiState(bool saving)
+        {
+            // During save, block all interactive controls to avoid race conditions.
+            if (CaptureMenuBarBorder != null) {
+                CaptureMenuBarBorder.IsEnabled = !saving;
+            }
+            if (RightMenuScroll != null) {
+                RightMenuScroll.IsEnabled = !saving;
+            }
+            if (SaveSettingsPanel != null) {
+                SaveSettingsPanel.IsEnabled = !saving;
+            }
+            if (SavingOverlay != null) {
+                SavingOverlay.Visibility = saving ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
+        private void SetSavingProgress(int done, int total)
+        {
+            if (SavingProgressText != null) {
+                SavingProgressText.Text = $"{done} / {total}";
+            }
         }
 
         private void BindSliderInput(System.Windows.Controls.Slider slider, System.Windows.Controls.TextBox input)
@@ -332,6 +573,13 @@ namespace CameraDemo
         {
             if (_camera.TryGetProcAmpRange(property, out long min, out long max, out long step, out long def, out _))
             {
+                NormalizeSigned32Range(ref min, ref max, ref step, ref def);
+
+                if (min > max) {
+                    // Final safety net against malformed driver ranges.
+                    (min, max) = (max, min);
+                }
+
                 slider.Minimum = min;
                 slider.Maximum = max;
                 slider.TickFrequency = step > 0 ? step : 1;
@@ -346,6 +594,33 @@ namespace CameraDemo
                 slider.IsEnabled = false;
                 valueText.Text = "N/A";
                 valueText.Foreground = System.Windows.Media.Brushes.Gray;
+            }
+        }
+
+        private static bool LooksLikeWrappedUInt32(long value)
+        {
+            return value >= 0 && value <= uint.MaxValue;
+        }
+
+        private static long ToSigned32(long value)
+        {
+            return unchecked((int)(uint)value);
+        }
+
+        private void NormalizeSigned32Range(ref long min, ref long max, ref long step, ref long def)
+        {
+            bool maybeWrapped = LooksLikeWrappedUInt32(min) && LooksLikeWrappedUInt32(max) && (min > int.MaxValue || max > int.MaxValue || min > max);
+            if (maybeWrapped) {
+                long origMin = min, origMax = max, origStep = step, origDef = def;
+                min = ToSigned32(min);
+                max = ToSigned32(max);
+                if (LooksLikeWrappedUInt32(step)) step = ToSigned32(step);
+                if (LooksLikeWrappedUInt32(def)) def = ToSigned32(def);
+                Log($"ProcAmp range normalized (wrapped int32): min {origMin}->{min}, max {origMax}->{max}, step {origStep}->{step}, def {origDef}->{def}");
+            }
+
+            if (step <= 0) {
+                step = 1;
             }
         }
 
@@ -420,7 +695,8 @@ namespace CameraDemo
         {
             bool autoExp = AutoExposureCheck.IsChecked == true && AutoExposureCheck.IsEnabled;
 
-            ExposureSlider.IsEnabled = !autoExp;
+            ExposureSlider.IsEnabled = !autoExp && !_isRecording && !_isBatchSaving;
+            ExposureValue.IsEnabled = !autoExp && !_isRecording && !_isBatchSaving;
         }
 
         private void UpdateExposureDisplay(long raw)
@@ -453,32 +729,68 @@ namespace CameraDemo
             if (_camera == null) return;
             
             int speed = _camera.GetUSBSpeed();
-            UsbSpeedText.Text = speed == 3 ? "USB 3.0 (SuperSpeed)" : (speed == 2 ? "USB 2.0 (HighSpeed)" : "Unknown");
+            string usbText = speed == 3 ? "USB 3.0 (SuperSpeed)" : (speed == 2 ? "USB 2.0 (HighSpeed)" : "Unknown");
+            UsbSpeedText.Text = usbText;
+            PanelUsbSpeedText.Text = usbText;
             UsbSpeedText.Foreground = speed == 3 ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.Orange;
+            PanelUsbSpeedText.Foreground = UsbSpeedText.Foreground;
 
             double fps = _camera.GetCurrentFPS();
             double tsFps = _camera.GetTimestampFPS();
             long dropped = _camera.GetEstimatedDroppedFrames();
             ActualFpsText.Text = tsFps > 0.0 ? $"{fps:F2} fps (ts {tsFps:F2}, drop {dropped})" : $"{fps:F2} fps";
             ActualFpsText.Foreground = fps >= TargetFps - 1.0 ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.White;
+            PanelFpsText.Text = ActualFpsText.Text;
+            PanelFpsText.Foreground = ActualFpsText.Foreground;
 
             long appliedExposureRaw = _camera.GetExposure();
             int appliedExposure = unchecked((int)appliedExposureRaw);
             int appliedGain = _camera.GetGain();
-            AppliedAeText.Text = $"Exp {appliedExposure}, Gain {appliedGain}";
+            bool autoExp = _autoExposureSupported && AutoExposureCheck.IsChecked == true;
+            string appliedText = autoExp ? "Auto Exposure" : $"Exp {appliedExposure}, Gain {appliedGain}";
+            AppliedAeText.Text = appliedText;
+            PanelAppliedAeText.Text = appliedText;
 
             UpdateActiveModeText();
 
             if (_frameWidth > 0 && _frameHeight > 0) {
                 CurrentResolutionText.Text = $"{_frameWidth} x {_frameHeight}";
             }
+            NegotiatedModeText.Text = CurrentResolutionText.Text;
+            PanelNegotiatedModeText.Text = CurrentResolutionText.Text;
         }
 
         private void RecordBtn_Click(object sender, RoutedEventArgs e)
         {
+            if (!_cameraReady || !_targetCameraReady) {
+                System.Windows.MessageBox.Show("Sony 카메라가 준비되지 않았습니다. 먼저 연결 상태를 확인해 주세요.", "카메라 연결 점검 필요", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
             if (!_isRunning) {
                 System.Windows.MessageBox.Show("Please Start Preview first.", "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
+            }
+
+            if (!_isRecording) {
+                bool autoExpWarn = _autoExposureSupported && AutoExposureCheck.IsChecked == true;
+                bool autoFocusWarn = _selectedFocusMode == FocusMode.Auto;
+                if (autoExpWarn || autoFocusWarn) {
+                    string warning =
+                        (autoExpWarn ? "Auto Exposure is enabled in preview. Recording uses manual exposure values.\n" : "") +
+                        (autoFocusWarn ? "Focus mode is Auto. Right before recording, autofocus will run once, then recording proceeds in manual focus.\n" : "") +
+                        $"\nManual values to apply:\nExposure={ExposureSlider.Value:0}, Gain={GainSlider.Value:0}, Focus={_manualFocusValue:0}\n\n" +
+                        "Do you want to continue recording?";
+                    var confirm = System.Windows.MessageBox.Show(
+                        warning,
+                        "Recording Confirmation",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Warning);
+                    if (confirm != MessageBoxResult.Yes) {
+                        Log("Recording canceled by user after auto mode warning.");
+                        return;
+                    }
+                }
             }
 
             int nw = _camera.GetNegotiatedWidth();
@@ -500,28 +812,32 @@ namespace CameraDemo
                 // Stop manual recording
                 _isRecording = false;
                 RestoreFocusAfterRecording();
-                RecordBtn.Content = "● Record (Memory Queue)";
+                RecordBtn.Content = "● Start Recording";
+                if (RecordingOverlay != null) RecordingOverlay.Visibility = Visibility.Collapsed;
                 if (_recordInMemoryOnly) {
-                    Log($"Recording stopped manually. Memory capture ready. Total {_recordedFrameCount} frames.");
+                    Log($"Recording stopped manually. Memory capture completed. Total {_recordedFrameCount} frames (queue drop {_recordDroppedByQueue}).");
                     BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
                 } else {
                     _rawQueue?.CompleteAdding(); // Let the background spooler finish remaining items
-                    Log($"Recording stopped manually. Spooling remaining frames to SSD...");
+                    Log($"Recording stopped manually. Spooling remaining frames to SSD... (queue drop {_recordDroppedByQueue})");
                 }
             } else {
                 ClearRecordedFramesMemory();
                 _recordedFrameCount = 0;
+                _recordDroppedByQueue = 0;
                 BatchSaveBtn.IsEnabled = false;
                 _camera.ResetPerfStats();
+                UpdateRecordingPanelLockState();
                 
                 string sel = ((System.Windows.Controls.ComboBoxItem)CaptureDurationCombo.SelectedItem).Content.ToString() ?? "Continuous";
                 if (sel == "Continuous") _recordDuration = TimeSpan.Zero;
                 else _recordDuration = TimeSpan.FromSeconds(double.Parse(sel.Replace("s", "")));
                 _recordInMemoryOnly = _recordDuration.TotalSeconds > 0 && _recordDuration.TotalSeconds <= 3.0;
 
-                _tempDirectory = Path.Combine(Path.GetTempPath(), "CameraSDK_Temp");
-                if (!Directory.Exists(_tempDirectory)) Directory.CreateDirectory(_tempDirectory);
-                foreach (var file in Directory.GetFiles(_tempDirectory)) File.Delete(file); // clear old
+                string tempRoot = Path.Combine(Path.GetTempPath(), "CameraSDK_Temp");
+                if (!Directory.Exists(tempRoot)) Directory.CreateDirectory(tempRoot);
+                _tempDirectory = Path.Combine(tempRoot, $"session_{DateTime.Now:yyyyMMdd_HHmmss_fff}");
+                Directory.CreateDirectory(_tempDirectory);
 
                 if (_recordInMemoryOnly) {
                     _rawQueue = null;
@@ -546,7 +862,7 @@ namespace CameraDemo
                             bw.Flush();
                         }
                         Dispatcher.BeginInvoke(() => {
-                            Log($"SSD Spooling finished. Total {_recordedFrameCount} frames saved to temp.");
+                            Log($"SSD Spooling finished. Total {_recordedFrameCount} frames saved to temp. Queue drop {_recordDroppedByQueue}.");
                             BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
                         });
                     });
@@ -563,8 +879,10 @@ namespace CameraDemo
                     $"Saturation={SaturationSlider.Value:0}, Sharpness={SharpnessSlider.Value:0}");
                 _isRecording = true;
                 LockFocusForRecording();
+                UpdateRecordingPanelLockState();
                 RecordBtn.Content = "■ Stop Recording";
-                Log($"Recording armed for {sel}. Duration timer starts on first frame.");
+                if (RecordingOverlay != null) RecordingOverlay.Visibility = Visibility.Visible;
+                Log($"Recording armed ({sel}). Timer starts on first received frame.");
             }
         }
 
@@ -583,110 +901,190 @@ namespace CameraDemo
                 return;
             }
 
-            using var fbd = new System.Windows.Forms.FolderBrowserDialog();
-            if (fbd.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-            {
-                string folder = fbd.SelectedPath;
-                string format = ((System.Windows.Controls.ComboBoxItem)FormatCombo.SelectedItem).Content.ToString()?.ToLower() ?? "png";
-                int quality = (int)JpegQualitySlider.Value;
-                int count = _recordedFrameCount;
+            string folder = CreateAutoSaveFolder();
+            string format = ((System.Windows.Controls.ComboBoxItem)FormatCombo.SelectedItem).Content.ToString()?.ToLower() ?? "png";
+            int quality = (int)JpegQualitySlider.Value;
+            int count = _recordedFrameCount;
+            Log($"Auto save folder: {folder}");
 
-                bool wasRunning = _isRunning;
-                if (_isRunning) {
-                    _camera.Stop();
+            bool wasRunning = _isRunning;
+            if (_isRunning) {
+                // Save path operates on stable buffers; pause preview first to avoid UI/capture contention.
+                var stopTask = Task.Run(() => _camera.Stop());
+                var stopDone = await Task.WhenAny(stopTask, Task.Delay(2500));
+                if (stopDone == stopTask && stopTask.Result) {
                     _isRunning = false;
                     StartStopBtn.Content = "Start Preview";
-                    StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(40, 167, 69));
-                    Log("Capture paused for batch save.");
-                }
-
-                _isBatchSaving = true;
-                BatchSaveBtn.IsEnabled = false;
-                StartStopBtn.IsEnabled = false;
-                RecordBtn.IsEnabled = false;
-                Log($"Starting batch format encoding of {count} RAW frames to {folder} as {format.ToUpper()}...");
-
-                try
-                {
-                    await Task.Run(() =>
-                    {
-                        if (_recordInMemoryOnly) {
-                            RawFrameChunk[] frames;
-                            lock (_recordedFramesLock) {
-                                frames = _recordedFramesMemory.ToArray();
-                            }
-                            for (int i = 0; i < frames.Length; i++) {
-                                string path = Path.Combine(folder, $"frame_{i:D5}.{format}");
-                                SaveFrameChunk(frames[i], path, format, quality);
-
-                                if ((i + 1) % 10 == 0 || i + 1 == frames.Length) {
-                                    int done = i + 1;
-                                    Dispatcher.BeginInvoke(() => Log($"Batch save progress: {done}/{frames.Length}"));
-                                }
-                            }
-                        } else {
-                            using (var rawFs = new FileStream(_spoolRawPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4 * 1024 * 1024, FileOptions.SequentialScan))
-                            {
-                                using var br = new BinaryReader(rawFs);
-                                for (int i = 0; i < count; i++)
-                                {
-                                    if (rawFs.Position >= rawFs.Length) break;
-                                    int frameLen = br.ReadInt32();
-                                    int frameWidth = br.ReadInt32();
-                                    int frameHeight = br.ReadInt32();
-                                    int frameStep = br.ReadInt32();
-                                    if (frameLen <= 0 || frameLen > 100 * 1024 * 1024) break;
-                                    byte[] frameBuffer = br.ReadBytes(frameLen);
-                                    if (frameBuffer.Length < frameLen) break;
-
-                                    string path = Path.Combine(folder, $"frame_{i:D5}.{format}");
-                                    SaveFrameChunk(new RawFrameChunk
-                                    {
-                                        Buffer = frameBuffer,
-                                        Length = frameLen,
-                                        Width = frameWidth,
-                                        Height = frameHeight,
-                                        Step = frameStep
-                                    }, path, format, quality);
-
-                                    if ((i + 1) % 10 == 0 || i + 1 == count) {
-                                        int done = i + 1;
-                                        Dispatcher.BeginInvoke(() => Log($"Batch save progress: {done}/{count}"));
-                                    }
-                                }
-                            }
-                        }
-                    });
-
-                    Log("Batch encoding & save completed.");
-                }
-                catch (Exception ex)
-                {
-                    Log($"Error during batch save: {ex.Message}");
-                    System.Windows.MessageBox.Show($"Batch save failed:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-                finally
-                {
-                    _isBatchSaving = false;
+                    UpdatePreviewStoppedOverlay();
+                    Log("Preview paused for batch save.");
+                } else {
+                    Log("Error: Preview stop timeout during batch save. Save aborted to avoid app freeze.");
+                    System.Windows.MessageBox.Show(
+                        "Preview 정지가 지연되어 저장을 중단했습니다.\n" +
+                        "잠시 후 Stop Preview를 다시 누른 뒤 저장을 재시도해 주세요.",
+                        "Save Aborted",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
                     StartStopBtn.IsEnabled = true;
                     RecordBtn.IsEnabled = true;
                     BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
-                    ResolutionCombo.IsEnabled = !_isRunning && !_isRecording && !_isBatchSaving;
+                    UpdateRecordingPanelLockState();
+                    return;
+                }
+            }
 
-                    if (wasRunning && !_isRunning) {
-                        if (_camera.Start()) {
-                            _isRunning = true;
-                            StartStopBtn.Content = "Stop Preview";
-                            StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 53, 69));
-                            Log("Capture resumed after batch save.");
+            _isBatchSaving = true;
+            BatchSaveBtn.IsEnabled = false;
+            StartStopBtn.IsEnabled = false;
+            RecordBtn.IsEnabled = false;
+            UpdateRecordingPanelLockState();
+            UpdateSavingUiState(true);
+            SetSavingProgress(0, count);
+            Log($"Starting batch format encoding of {count} RAW frames to {folder} as {format.ToUpper()}...");
+            var batchStartUtc = DateTime.UtcNow;
+
+            try
+            {
+                // Run bitmap encoding on an STA thread (WIC-friendly path) to keep UI responsive.
+                await RunOnStaThreadAsync(() =>
+                {
+                    var lastProgressAt = DateTime.UtcNow;
+                    if (_recordInMemoryOnly) {
+                        RawFrameChunk[] frames;
+                        lock (_recordedFramesLock) {
+                            frames = _recordedFramesMemory.ToArray();
                         }
+                        for (int i = 0; i < frames.Length; i++) {
+                            string path = Path.Combine(folder, $"frame_{i:D5}.{format}");
+                            SaveFrameChunk(frames[i], path, format, quality);
+                            ArrayPool<byte>.Shared.Return(frames[i].Buffer);
+
+                            if ((DateTime.UtcNow - lastProgressAt).TotalMilliseconds >= 900 || i + 1 == frames.Length) {
+                                int done = i + 1;
+                                lastProgressAt = DateTime.UtcNow;
+                                Dispatcher.BeginInvoke(() =>
+                                {
+                                    SetSavingProgress(done, frames.Length);
+                                    Log($"Batch save progress: {done}/{frames.Length}");
+                                });
+                            }
+                        }
+                        lock (_recordedFramesLock) {
+                            _recordedFramesMemory.Clear();
+                        }
+                    } else {
+                        using (var rawFs = new FileStream(_spoolRawPath, FileMode.Open, FileAccess.Read, FileShare.Read, 4 * 1024 * 1024, FileOptions.SequentialScan))
+                        {
+                            using var br = new BinaryReader(rawFs);
+                            for (int i = 0; i < count; i++)
+                            {
+                                if (rawFs.Position >= rawFs.Length) break;
+                                int frameLen = br.ReadInt32();
+                                int frameWidth = br.ReadInt32();
+                                int frameHeight = br.ReadInt32();
+                                int frameStep = br.ReadInt32();
+                                if (frameLen <= 0 || frameLen > 100 * 1024 * 1024) break;
+                                byte[] frameBuffer = br.ReadBytes(frameLen);
+                                if (frameBuffer.Length < frameLen) break;
+
+                                string path = Path.Combine(folder, $"frame_{i:D5}.{format}");
+                                SaveFrameChunk(new RawFrameChunk
+                                {
+                                    Buffer = frameBuffer,
+                                    Length = frameLen,
+                                    Width = frameWidth,
+                                    Height = frameHeight,
+                                    Step = frameStep
+                                }, path, format, quality);
+
+                                if ((DateTime.UtcNow - lastProgressAt).TotalMilliseconds >= 900 || i + 1 == count) {
+                                    int done = i + 1;
+                                    lastProgressAt = DateTime.UtcNow;
+                                    Dispatcher.BeginInvoke(() =>
+                                    {
+                                        SetSavingProgress(done, count);
+                                        Log($"Batch save progress: {done}/{count}");
+                                    });
+                                }
+                            }
+                        }
+                    }
+                });
+
+                Log("Batch encoding & save completed.");
+                Log($"Batch save elapsed: {(DateTime.UtcNow - batchStartUtc).TotalSeconds:F2}s");
+                Log($"Saved to: {folder}");
+            }
+            catch (Exception ex)
+            {
+                Log($"Error during batch save: {ex.Message}");
+                System.Windows.MessageBox.Show($"Batch save failed:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                _isBatchSaving = false;
+                StartStopBtn.IsEnabled = true;
+                RecordBtn.IsEnabled = true;
+                BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
+                ResolutionCombo.IsEnabled = !_isRunning && !_isRecording && !_isBatchSaving;
+                UpdateRecordingPanelLockState();
+                UpdateSavingUiState(false);
+
+                if (wasRunning && !_isRunning) {
+                    if (_camera.Start()) {
+                        _isRunning = true;
+                        StartStopBtn.Content = "Stop Preview";
+                        UpdatePreviewStoppedOverlay();
+                        // StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 53, 69));
+                        Log("Preview resumed after batch save.");
                     }
                 }
             }
         }
 
-        private void ToggleCapture()
+        private static string CreateAutoSaveFolder()
         {
+            // Use deterministic auto-save session folders to avoid file dialog freeze issues.
+            string root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "saved_frames");
+            Directory.CreateDirectory(root);
+            string session = $"save_{DateTime.Now:yyyyMMdd_HHmmss_fff}";
+            string folder = Path.Combine(root, session);
+            Directory.CreateDirectory(folder);
+            return folder;
+        }
+
+        private static Task RunOnStaThreadAsync(Action action)
+        {
+            var tcs = new TaskCompletionSource<object?>();
+            var thread = new Thread(() =>
+            {
+                try {
+                    action();
+                    tcs.SetResult(null);
+                }
+                catch (Exception ex) {
+                    tcs.SetException(ex);
+                }
+            });
+            thread.IsBackground = true;
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+            return tcs.Task;
+        }
+
+        private async void ToggleCapture()
+        {
+            if (!_cameraReady || !_targetCameraReady)
+            {
+                System.Windows.MessageBox.Show(
+                    "Sony 카메라가 준비되지 않았습니다. 연결 상태를 확인해 주세요.\n앱이 자동 재시도 중입니다.",
+                    "카메라 연결 점검 필요",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                if (!_reconnectTimer.IsEnabled) _reconnectTimer.Start();
+                return;
+            }
+
             if (!_isRunning)
             {
                 if (_camera.Start())
@@ -694,20 +1092,44 @@ namespace CameraDemo
                     _isRunning = true;
                     ApplyAutoControlsToCamera();
                     StartStopBtn.Content = "Stop Preview";
-                    StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 53, 69)); // Bootstrap Danger Red
+                    UpdatePreviewStoppedOverlay();
+                    // StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 53, 69)); // Bootstrap Danger Red
                     ResolutionCombo.IsEnabled = false;
+                    UpdateRecordingPanelLockState();
                     Log("Preview started.");
                 }
             }
             else
             {
-                if (_camera.Stop())
+                StartStopBtn.IsEnabled = false;
+                var stopTask = Task.Run(() => _camera.Stop());
+                var finished = await Task.WhenAny(stopTask, Task.Delay(3000));
+                if (finished != stopTask) {
+                    StartStopBtn.IsEnabled = true;
+                    Log("Warning: Camera stop timeout during hot-plug. Please retry after a moment.");
+                    System.Windows.MessageBox.Show(
+                        "카메라 정지 응답이 지연되고 있습니다.\n" +
+                        "USB 재연결 직후에는 잠시 후 다시 시도해 주세요.",
+                        "카메라 응답 지연",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    return;
+                }
+                bool stopped = stopTask.Result;
+                StartStopBtn.IsEnabled = true;
+                if (stopped)
                 {
                     _isRunning = false;
                     StartStopBtn.Content = "Start Preview";
-                    StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(40, 167, 69)); // Bootstrap Success Green
+                    UpdatePreviewStoppedOverlay();
+                    // StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(40, 167, 69)); // Bootstrap Success Green
                     ResolutionCombo.IsEnabled = !_isRecording && !_isBatchSaving;
+                    UpdateRecordingPanelLockState();
                     Log("Preview stopped.");
+                }
+                else
+                {
+                    Log("Warning: Preview stop failed.");
                 }
             }
         }
@@ -717,7 +1139,7 @@ namespace CameraDemo
             _frameWidth = width;
             _frameHeight = height;
 
-            // Recording path is prioritized for throughput.
+            // Recording path is prioritized for throughput (skip preview rendering while recording).
             if (_isRecording)
             {
                 if (!_recordDurationStarted) {
@@ -733,20 +1155,18 @@ namespace CameraDemo
                 if (_recordDuration.TotalSeconds > 0 && elapsed >= _recordDuration)
                 {
                     _isRecording = false;
-                    Dispatcher.BeginInvoke(() => RestoreFocusAfterRecording());
-                    if (_recordInMemoryOnly) {
-                        Dispatcher.BeginInvoke(() => {
-                            RecordBtn.Content = "● Record (Memory Queue)";
-                            Log($"Recording finished auto. Memory capture ready. Total {_recordedFrameCount} frames.");
+                    Dispatcher.BeginInvoke(() => {
+                        RestoreFocusAfterRecording();
+                        RecordBtn.Content = "● Start Recording";
+                        if (RecordingOverlay != null) RecordingOverlay.Visibility = Visibility.Collapsed;
+                        if (_recordInMemoryOnly) {
+                            Log($"Auto recording finished. Memory capture completed. Total {_recordedFrameCount} frames (queue drop {_recordDroppedByQueue}).");
                             BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
-                        });
-                    } else {
-                        _rawQueue?.CompleteAdding();
-                        Dispatcher.BeginInvoke(() => {
-                            RecordBtn.Content = "● Record (Memory Queue)";
-                            Log($"Recording finished auto. Spooling remaining frames...");
-                        });
-                    }
+                        } else {
+                            _rawQueue?.CompleteAdding();
+                            Log($"Auto recording finished. Spooling remaining frames... (queue drop {_recordDroppedByQueue})");
+                        }
+                    });
                 }
                 else
                 {
@@ -766,7 +1186,10 @@ namespace CameraDemo
                         }
                         Interlocked.Increment(ref _recordedFrameCount);
                     } else if (_rawQueue is { IsAddingCompleted: false } queue) {
-                        queue.Add(chunk);
+                        if (!queue.TryAdd(chunk)) {
+                            Interlocked.Increment(ref _recordDroppedByQueue);
+                            ArrayPool<byte>.Shared.Return(recCopy);
+                        }
                     } else {
                         ArrayPool<byte>.Shared.Return(recCopy);
                     }
@@ -939,11 +1362,23 @@ namespace CameraDemo
             }
 
             if (Dispatcher.CheckAccess()) {
-                LogText.Text += line + "\n";
+                if (LogText.Text.Length > MaxLogChars) {
+                    int trim = LogText.Text.Length - MaxLogChars + 8000;
+                    if (trim > 0 && trim < LogText.Text.Length) {
+                        LogText.Text = LogText.Text.Substring(trim);
+                    }
+                }
+                LogText.AppendText(line + Environment.NewLine);
                 LogText.ScrollToEnd();
             } else {
                 Dispatcher.BeginInvoke(() => {
-                    LogText.Text += line + "\n";
+                    if (LogText.Text.Length > MaxLogChars) {
+                        int trim = LogText.Text.Length - MaxLogChars + 8000;
+                        if (trim > 0 && trim < LogText.Text.Length) {
+                            LogText.Text = LogText.Text.Substring(trim);
+                        }
+                    }
+                    LogText.AppendText(line + Environment.NewLine);
                     LogText.ScrollToEnd();
                 });
             }

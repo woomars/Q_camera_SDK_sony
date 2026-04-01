@@ -17,6 +17,10 @@
 #include <cstring>
 #include <chrono>
 #include <cstdlib>
+#include <string>
+#include <algorithm>
+#include <cwctype>
+#include <sstream>
 
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mf.lib")
@@ -61,6 +65,8 @@ static long g_estimated_dropped_frames = 0;
 static LONGLONG g_prev_sample_ts = -1;
 static LONGLONG g_ts_interval_acc = 0;
 static long g_ts_interval_count = 0;
+static int g_target_camera_detected = 0;
+static int g_selected_camera_is_target = 0;
 
 static void ResetPerfStatsInternal() {
     g_current_fps = 0;
@@ -94,15 +100,16 @@ HRESULT CreateVideoCaptureDevice(IMFMediaSource** ppSource) {
     if (SUCCEEDED(hr)) {
         hr = MFEnumDeviceSources(pConfig, &ppDevices, &count);
     }
+    g_target_camera_detected = 0;
+    g_selected_camera_is_target = 0;
+
     if (SUCCEEDED(hr) && count > 0) {
-        std::vector<UINT32> preferredHint;
-        std::vector<UINT32> preferredExternal;
-        std::vector<UINT32> fallback;
         char* hintEnvRaw = nullptr;
         size_t hintLen = 0;
         _dupenv_s(&hintEnvRaw, &hintLen, "CAM_DEVICE_HINT");
         const char* hintEnv = (hintEnvRaw && hintLen > 0) ? hintEnvRaw : nullptr;
         std::wstring hintW;
+        std::vector<std::wstring> hintTokens;
         if (hintEnv && hintEnv[0] != '\0') {
             int wlen = MultiByteToWideChar(CP_UTF8, 0, hintEnv, -1, NULL, 0);
             if (wlen > 1) {
@@ -112,44 +119,148 @@ HRESULT CreateVideoCaptureDevice(IMFMediaSource** ppSource) {
             }
         }
 
-        auto isInternalName = [](const std::wstring& name) {
-            return
-                (name.find(L"HP") != std::wstring::npos) ||
-                (name.find(L"True Vision") != std::wstring::npos) ||
-                (name.find(L"Integrated") != std::wstring::npos) ||
-                (name.find(L"IR Camera") != std::wstring::npos) ||
-                (name.find(L"Windows Hello") != std::wstring::npos) ||
-                (name.find(L"Laptop") != std::wstring::npos) ||
-                (name.find(L"Webcam") != std::wstring::npos);
+        auto toLower = [](std::wstring s) {
+            std::transform(s.begin(), s.end(), s.begin(), [](wchar_t c) { return (wchar_t)towlower(c); });
+            return s;
         };
+
+        auto isInternalName = [&](const std::wstring& nameRaw) {
+            std::wstring name = toLower(nameRaw);
+            return
+                (name.find(L"hp") != std::wstring::npos) ||
+                (name.find(L"true vision") != std::wstring::npos) ||
+                (name.find(L"integrated") != std::wstring::npos) ||
+                (name.find(L"ir camera") != std::wstring::npos) ||
+                (name.find(L"windows hello") != std::wstring::npos) ||
+                (name.find(L"laptop") != std::wstring::npos) ||
+                (name.find(L"built-in") != std::wstring::npos);
+        };
+
+        auto isSonyTarget = [&](const std::wstring& nameRaw, const std::wstring& linkRaw) {
+            std::wstring name = toLower(nameRaw);
+            std::wstring link = toLower(linkRaw);
+            return
+                (name.find(L"sony") != std::wstring::npos) ||
+                (name.find(L"imx258") != std::wstring::npos) ||
+                (name.find(L"wn camera") != std::wstring::npos) ||
+                (name.find(L"q-camera") != std::wstring::npos) ||
+                (link.find(L"vid_054c") != std::wstring::npos); // Sony vendor id
+        };
+
+        auto isVirtualCamera = [&](const std::wstring& nameRaw) {
+            std::wstring name = toLower(nameRaw);
+            return
+                (name.find(L"virtual") != std::wstring::npos) ||
+                (name.find(L"obs") != std::wstring::npos) ||
+                (name.find(L"ndi") != std::wstring::npos);
+        };
+
+        auto splitHints = [&](const std::wstring& hintRaw) {
+            std::vector<std::wstring> tokens;
+            std::wstring cur;
+            for (wchar_t ch : hintRaw) {
+                if (ch == L'|' || ch == L',' || ch == L';') {
+                    if (!cur.empty()) {
+                        tokens.push_back(toLower(cur));
+                        cur.clear();
+                    }
+                } else {
+                    cur.push_back(ch);
+                }
+            }
+            if (!cur.empty()) {
+                tokens.push_back(toLower(cur));
+            }
+            return tokens;
+        };
+
+        if (!hintW.empty()) {
+            hintTokens = splitHints(hintW);
+        }
+
+        struct DeviceCandidate {
+            UINT32 index = 0;
+            int score = 0;
+            std::wstring name;
+            std::wstring link;
+            bool hintMatched = false;
+            bool sonyTarget = false;
+            bool internal = false;
+            bool usbPath = false;
+        };
+
+        std::vector<DeviceCandidate> candidates;
+        candidates.reserve(count);
 
         for (UINT32 i = 0; i < count; i++) {
             WCHAR* szFriendlyName = NULL;
             UINT32 nameLength = 0;
-            if (SUCCEEDED(ppDevices[i]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &szFriendlyName, &nameLength))) {
-                std::wcout << L"[CameraCore] Found Camera [" << i << L"]: " << szFriendlyName << std::endl;
-                std::wstring name(szFriendlyName);
-                bool isInternal = isInternalName(name);
-                bool hintMatched = (!hintW.empty() && name.find(hintW) != std::wstring::npos);
+            WCHAR* szSymbolicLink = NULL;
+            UINT32 linkLength = 0;
+            std::wstring friendly = L"(unknown)";
+            std::wstring symbolic;
 
-                if (hintMatched) preferredHint.push_back(i);
-                else if (!isInternal) preferredExternal.push_back(i);
-                else fallback.push_back(i);
+            if (SUCCEEDED(ppDevices[i]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, &szFriendlyName, &nameLength))) {
+                friendly = szFriendlyName;
                 CoTaskMemFree(szFriendlyName);
-            } else {
-                fallback.push_back(i);
             }
+
+            if (SUCCEEDED(ppDevices[i]->GetAllocatedString(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, &szSymbolicLink, &linkLength))) {
+                symbolic = szSymbolicLink;
+                CoTaskMemFree(szSymbolicLink);
+            }
+
+            std::wstring friendlyL = toLower(friendly);
+            bool internal = isInternalName(friendly);
+            bool hintMatched = false;
+            for (const auto& token : hintTokens) {
+                if (!token.empty() && friendlyL.find(token) != std::wstring::npos) {
+                    hintMatched = true;
+                    break;
+                }
+            }
+            bool sonyTarget = isSonyTarget(friendly, symbolic);
+            if (sonyTarget) {
+                g_target_camera_detected = 1;
+            }
+            bool usbPath = toLower(symbolic).find(L"usb#vid_") != std::wstring::npos;
+            bool virtualCam = isVirtualCamera(friendly);
+
+            int score = 0;
+            if (hintMatched) score += 1000;
+            if (sonyTarget) score += 700;
+            if (usbPath) score += 120;
+            if (internal) score -= 450;
+            if (virtualCam) score -= 500;
+
+            DeviceCandidate c;
+            c.index = i;
+            c.score = score;
+            c.name = friendly;
+            c.link = symbolic;
+            c.hintMatched = hintMatched;
+            c.sonyTarget = sonyTarget;
+            c.internal = internal;
+            c.usbPath = usbPath;
+            candidates.push_back(c);
+
+            std::wcout << L"[CameraCore] Found Camera [" << i << L"] score=" << score
+                       << L", hint=" << (hintMatched ? L"Y" : L"N")
+                       << L", sony=" << (sonyTarget ? L"Y" : L"N")
+                       << L", internal=" << (internal ? L"Y" : L"N")
+                       << L", usb=" << (usbPath ? L"Y" : L"N")
+                       << L": " << friendly << std::endl;
         }
 
-        std::vector<UINT32> candidates;
-        candidates.insert(candidates.end(), preferredHint.begin(), preferredHint.end());
-        candidates.insert(candidates.end(), preferredExternal.begin(), preferredExternal.end());
-        candidates.insert(candidates.end(), fallback.begin(), fallback.end());
+        std::stable_sort(candidates.begin(), candidates.end(), [](const DeviceCandidate& a, const DeviceCandidate& b) {
+            return a.score > b.score;
+        });
 
         hr = MF_E_NOT_FOUND;
         HRESULT lastActivateHr = MF_E_NOT_FOUND;
-        for (UINT32 idx : candidates) {
-            std::cout << "[CameraCore] Trying Camera Index: " << idx << std::endl;
+        for (const auto& c : candidates) {
+            UINT32 idx = c.index;
+            std::wcout << L"[CameraCore] Trying Camera Index: " << idx << L" (" << c.name << L") score=" << c.score << std::endl;
             HRESULT hrActivate = E_FAIL;
             const int activateRetry = 3;
             for (int attempt = 1; attempt <= activateRetry; attempt++) {
@@ -168,7 +279,8 @@ HRESULT CreateVideoCaptureDevice(IMFMediaSource** ppSource) {
             }
             if (SUCCEEDED(hrActivate) && *ppSource != NULL) {
                 hr = S_OK;
-                std::cout << "[CameraCore] Selected Camera Index: " << idx << std::endl;
+                g_selected_camera_is_target = c.sonyTarget ? 1 : 0;
+                std::wcout << L"[CameraCore] Selected Camera Index: " << idx << L" (" << c.name << L")" << std::endl;
                 break;
             }
             lastActivateHr = hrActivate;
@@ -176,6 +288,9 @@ HRESULT CreateVideoCaptureDevice(IMFMediaSource** ppSource) {
         }
         if (FAILED(hr) && FAILED(lastActivateHr)) {
             hr = lastActivateHr;
+        }
+        if (g_target_camera_detected == 0) {
+            std::cerr << "[CameraCore] Target Sony camera was not detected in current enumeration." << std::endl;
         }
         if (hintEnvRaw) {
             free(hintEnvRaw);
@@ -197,7 +312,8 @@ HRESULT CreateVideoCaptureDevice(IMFMediaSource** ppSource) {
 
 void CaptureLoop() {
     CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+    // Avoid starving UI/input threads when camera glitches or hot-plug events happen.
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
     std::cout << "[CameraCore] Capture loop started." << std::endl;
     HRESULT hr = S_OK;
     DWORD streamIndex = (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM;
@@ -341,17 +457,19 @@ extern "C" {
         g_last_hresult = (long)hr;
         if (FAILED(hr)) return CAM_ERROR_DEVICE_NOT_FOUND;
 
-        const int initRetry = 3;
+        const int initRetry = 8;
+        const HRESULT kNoCaptureDevicesHr = (HRESULT)0xC00D36D5;
         for (int attempt = 1; attempt <= initRetry; attempt++) {
             hr = CreateVideoCaptureDevice(&g_pSource);
             g_last_hresult = (long)hr;
             if (SUCCEEDED(hr) && g_pSource) {
                 break;
             }
-            if (hr == E_ACCESSDENIED && attempt < initRetry) {
-                std::cout << "[CameraCore] Camera initialize access denied (attempt "
+            if ((hr == E_ACCESSDENIED || hr == MF_E_NOT_FOUND || hr == kNoCaptureDevicesHr) && attempt < initRetry) {
+                std::cout << "[CameraCore] Camera initialize retryable failure (hr=0x"
+                          << std::hex << hr << std::dec << ") attempt "
                           << attempt << "/" << initRetry << "), retrying..." << std::endl;
-                Sleep(500);
+                Sleep(700);
                 continue;
             }
             break;
@@ -761,6 +879,14 @@ extern "C" {
         return (int)g_last_hresult;
     }
 
+    CAMERASDK_API int Camera_IsTargetCameraDetected() {
+        return g_target_camera_detected;
+    }
+
+    CAMERASDK_API int Camera_IsSelectedCameraTarget() {
+        return g_selected_camera_is_target;
+    }
+
     CAMERASDK_API int Camera_SetFrameCallback(FrameCallback callback) {
         g_callback = callback;
         return CAM_SUCCESS;
@@ -780,6 +906,10 @@ extern "C" {
     CAMERASDK_API int Camera_Stop() {
         if (!g_running) return CAM_SUCCESS;
         g_running = false;
+        if (g_pReader) {
+            // Unblock any pending ReadSample during unplug/replug events.
+            g_pReader->Flush((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM);
+        }
         if (g_capture_thread.joinable()) {
             g_capture_thread.join();
         }

@@ -43,6 +43,10 @@ extern "C" {
     CAMERASDK_API int Camera_GetActive4KMode();
     CAMERASDK_API int Camera_SetPreferredResolution(int width, int height);
     CAMERASDK_API int Camera_GetLastHRESULT();
+    // 1 if Sony/target camera was detected during device enumeration, else 0
+    CAMERASDK_API int Camera_IsTargetCameraDetected();
+    // 1 if currently selected camera is the detected target camera, else 0
+    CAMERASDK_API int Camera_IsSelectedCameraTarget();
     CAMERASDK_API int Camera_GetProcAmpRange(int property, long* pMin, long* pMax, long* pStep, long* pDefault, long* pCaps);
     CAMERASDK_API int Camera_SetProcAmpValue(int property, long value, int useAuto);
     CAMERASDK_API int Camera_GetCameraControlRange(int property, long* pMin, long* pMax, long* pStep, long* pDefault, long* pCaps);
