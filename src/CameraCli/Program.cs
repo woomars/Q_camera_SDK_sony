@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using CameraSDK;
@@ -25,6 +25,11 @@ static class Program
 
     static int Main(string[] args)
     {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("CAM_DEVICE_HINT")))
+        {
+            Environment.SetEnvironmentVariable("CAM_DEVICE_HINT", "WN Camera|Sony|IMX258");
+        }
+
         var opts = ParseArgs(args);
         using var cam = new CameraManager();
 

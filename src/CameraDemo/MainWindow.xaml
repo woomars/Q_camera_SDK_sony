@@ -1,198 +1,624 @@
-﻿<Window x:Class="CameraDemo.MainWindow"
+<Window x:Class="CameraDemo.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="13MP Camera SDK Demo"
-        Height="1120"
-        Width="1840"
-        MinHeight="1040"
-        MinWidth="1760"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="Q-Camera : Sony 13MP - IMX258"
+        Icon="Assets/qcamera_icon.png"
+        Height="1190" Width="1720"
+        MinHeight="1030" MinWidth="1480"
         WindowStartupLocation="CenterScreen"
-        Background="#1E1E1E">
+        WindowStyle="None"
+        ResizeMode="CanResize"
+        Background="#0E1320">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="0" ResizeBorderThickness="6" CornerRadius="0" GlassFrameThickness="0"/>
+    </shell:WindowChrome.WindowChrome>
     <Window.Resources>
-        <Style x:Key="DarkActionButtonStyle" TargetType="Button">
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Background" Value="#007ACC"/>
-            <Setter Property="BorderBrush" Value="#4A4A4A"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#0F1B33"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#0F1B33"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#DDE8FF"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#26395A"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFFFFF"/>
+        <LinearGradientBrush x:Key="PanelBrush" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#1B2336" Offset="0"/>
+            <GradientStop Color="#141B2B" Offset="1"/>
+        </LinearGradientBrush>
+        <Style TargetType="Border" x:Key="CardBorder">
+            <Setter Property="Background" Value="#1A2438"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="BorderBrush" Value="#2B3956"/>
             <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="#E6EEFF"/>
+            <Setter Property="Background" Value="#1E2F4E"/>
+            <Setter Property="BorderBrush" Value="#34507A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="2">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
             <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{Binding RelativeSource={RelativeSource Self}, Path=Background}"/>
+                    <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource Self}, Path=Foreground}"/>
+                    <Setter Property="BorderBrush" Value="{Binding RelativeSource={RelativeSource Self}, Path=BorderBrush}"/>
+                </Trigger>
                 <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Background" Value="#2F2F2F"/>
-                    <Setter Property="Foreground" Value="#B0B0B0"/>
-                    <Setter Property="BorderBrush" Value="#3A3A3A"/>
+                    <Setter Property="Opacity" Value="1"/>
+                    <Setter Property="Background" Value="#1E2F4E"/>
+                    <Setter Property="Foreground" Value="#AFC0DE"/>
+                    <Setter Property="BorderBrush" Value="#34507A"/>
                 </Trigger>
             </Style.Triggers>
         </Style>
+        <Style TargetType="Button" x:Key="PrimaryButton" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#2B7FFF"/>
+            <Setter Property="BorderBrush" Value="#4A7CD8"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style TargetType="Button" x:Key="DarkActionButton" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Foreground" Value="#DDE8FF"/>
+            <Setter Property="Background" Value="#223654"/>
+            <Setter Property="BorderBrush" Value="#35527A"/>
+        </Style>
+        <Style TargetType="Button" x:Key="TitleBarButton" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="26"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Background" Value="#1E2F4E"/>
+            <Setter Property="BorderBrush" Value="#314A72"/>
+            <Setter Property="Foreground" Value="#D6E6FF"/>
+        </Style>
+        <Style TargetType="TextBlock" x:Key="LabelText">
+            <Setter Property="Foreground" Value="#AFC0DE"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#0A1428"/>
+            <Setter Property="Foreground" Value="#00DAF3"/>
+            <Setter Property="BorderBrush" Value="#2B3C5E"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="#111C31"/>
+                    <Setter Property="Foreground" Value="#7890B5"/>
+                    <Setter Property="BorderBrush" Value="#2A3B5A"/>
+                    <Setter Property="Opacity" Value="1"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="ComboToggleButtonStyle" TargetType="ToggleButton">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="1"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#0F1B33"/>
+            <Setter Property="Foreground" Value="#DDE8FF"/>
+            <Setter Property="BorderBrush" Value="#2E3F62"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Grid.Column="2"
+                                          Style="{StaticResource ComboToggleButtonStyle}"
+                                          Focusable="False"
+                                          IsEnabled="{TemplateBinding IsEnabled}"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          ClickMode="Press"
+                                          Background="{TemplateBinding Background}"
+                                          BorderBrush="{TemplateBinding BorderBrush}"
+                                          BorderThickness="{TemplateBinding BorderThickness}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="28"/>
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter Margin="10,0,0,0"
+                                                      VerticalAlignment="Center"
+                                                      HorizontalAlignment="Left"
+                                                      Content="{TemplateBinding SelectionBoxItem}"
+                                                      ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                      ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"/>
+                                    <TextBlock Grid.Column="1" Text="⌄" Foreground="#AFC0DE" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                </Grid>
+                            </ToggleButton>
+                            <Popup Name="PART_Popup"
+                                   Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   PopupAnimation="Slide">
+                                <Grid MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <Border Background="#0F1B33" BorderBrush="#2E3F62" BorderThickness="1"/>
+                                    <ScrollViewer Margin="2" SnapsToDevicePixels="True">
+                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Background" Value="#17233A"/>
+                    <Setter Property="Foreground" Value="#6F86AA"/>
+                    <Setter Property="BorderBrush" Value="#2A3B56"/>
+                    <Setter Property="Opacity" Value="1"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="#0F1B33"/>
+            <Setter Property="Foreground" Value="#DDE8FF"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="#1C2D49"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#26395A"/>
+                    <Setter Property="Foreground" Value="#FFFFFF"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="SliderTrackButtonStyle" TargetType="RepeatButton">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="{TemplateBinding Background}" Height="4" CornerRadius="2"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SliderThumbStyle" TargetType="Thumb">
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Grid>
+                            <Ellipse Fill="#00DAF3"/>
+                            <Ellipse Stroke="#AA7FF6FF" StrokeThickness="6" Opacity="0.18"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="Slider">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid VerticalAlignment="Center">
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Background="#00DAF3" Style="{StaticResource SliderTrackButtonStyle}" Command="Slider.DecreaseLarge"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource SliderThumbStyle}"/>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Background="#4B5A73" Style="{StaticResource SliderTrackButtonStyle}" Command="Slider.IncreaseLarge"/>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.55"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#D7E4FF"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="#7890B5"/>
+                    <Setter Property="Opacity" Value="1"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="#D7E4FF"/>
+            <Setter Property="Background" Value="#1E2D4A"/>
+            <Setter Property="BorderBrush" Value="#304668"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="2">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="#00BFE0"/>
+                    <Setter Property="BorderBrush" Value="#00DAF3"/>
+                    <Setter Property="Foreground" Value="#062238"/>
+                </Trigger>
+                <Trigger Property="IsChecked" Value="False">
+                    <Setter Property="Background" Value="#1E2D4A"/>
+                    <Setter Property="BorderBrush" Value="#304668"/>
+                    <Setter Property="Foreground" Value="#D7E4FF"/>
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{Binding RelativeSource={RelativeSource Self}, Path=Background}"/>
+                    <Setter Property="Foreground" Value="{Binding RelativeSource={RelativeSource Self}, Path=Foreground}"/>
+                    <Setter Property="BorderBrush" Value="{Binding RelativeSource={RelativeSource Self}, Path=BorderBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="SmallToggleStyle" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+            <Setter Property="Width" Value="58"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Padding" Value="6,0"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
     </Window.Resources>
-    <Grid Margin="10">
+
+        <Grid x:Name="MainLayoutGrid" Margin="10">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="320" />
-            <ColumnDefinition Width="320" />
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="317"/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="150" />
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="236"/>
         </Grid.RowDefinitions>
 
-        <Border Grid.Column="0" Grid.Row="0" BorderBrush="#333" BorderThickness="1" Background="Black">
-            <Image x:Name="PreviewImage" Stretch="Uniform" />
+        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="0" Style="{StaticResource CardBorder}" Background="{StaticResource PanelBrush}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" x:Name="TitleBarRegion" MouseLeftButtonDown="TitleBarRegion_MouseLeftButtonDown">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Q-Camera : Sony 13MP - IMX258"
+                               Foreground="#00DAF3"
+                               FontSize="20"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button x:Name="MinimizeBtn" Content="─" Style="{StaticResource TitleBarButton}" Click="MinimizeBtn_Click" Margin="0,0,6,0"/>
+                        <Button x:Name="MaxRestoreBtn" Content="▢" Style="{StaticResource TitleBarButton}" Click="MaxRestoreBtn_Click" Margin="0,0,6,0"/>
+                        <Button x:Name="CloseBtn" Content="✕" Style="{StaticResource TitleBarButton}" Click="CloseBtn_Click" Background="#7A2E3B" BorderBrush="#A64656"/>
+                    </StackPanel>
+                </Grid>
+                <Border x:Name="TargetCameraAlertBar"
+                        Grid.Row="1"
+                        Margin="0,8,0,0"
+                        Padding="10,6"
+                        Background="#5C1E1E"
+                        BorderBrush="#D45A5A"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Visibility="Collapsed">
+                    <TextBlock x:Name="TargetCameraAlertText"
+                               Text="Sony camera warning"
+                               Foreground="#FFECEC"
+                               FontWeight="SemiBold"/>
+                </Border>
+            </Grid>
         </Border>
 
-        <ScrollViewer Grid.Column="1" Grid.Row="0" Grid.RowSpan="2" Margin="10,0,0,0" VerticalScrollBarVisibility="Auto">
+        <Grid Grid.Column="0" Grid.Row="1" Margin="0,10,10,10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Style="{StaticResource CardBorder}" Background="Black" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Image x:Name="PreviewImage" Stretch="Uniform"/>
+                    <Border x:Name="PreviewStoppedOverlay"
+                            Background="#8A05080F"
+                            Visibility="Visible"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch">
+                        <TextBlock Text="PREVIEW STOPPED"
+                                   Foreground="#E8F1FF"
+                                   FontSize="42"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <Border x:Name="PreviewHudStatusContainer"
+                            HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16"
+                            Background="#C0111A2D" BorderBrush="#2D3C5A" BorderThickness="1"
+                            CornerRadius="12" Padding="10">
+                        <StackPanel>
+                            <TextBlock Text="FPS RATE" Foreground="#96ACC9" FontSize="9" FontWeight="Bold"/>
+                            <TextBlock x:Name="ActualFpsText" Text="0.00 fps" Foreground="#00DAF3" FontSize="14" FontWeight="Bold" Margin="0,0,0,5"/>
+                            <TextBlock Text="DIMENSIONS" Foreground="#96ACC9" FontSize="9" FontWeight="Bold"/>
+                            <TextBlock x:Name="CurrentResolutionText" Text="- x -" Foreground="#E2EBFF" FontSize="12" FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
+                    <StackPanel x:Name="PreviewBottomStatusCards"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Bottom"
+                                Margin="0,0,0,58">
+                        <Border Background="#C0111A2D" BorderBrush="#2D3C5A" BorderThickness="1" CornerRadius="10" Padding="10,6" Margin="0,0,8,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="CONNECTION " Foreground="#95AACA" FontSize="9" FontWeight="Bold"/>
+                                <TextBlock x:Name="UsbSpeedText" Text="Detecting..." Foreground="#59F59A" FontSize="9" FontWeight="Bold"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#C0111A2D" BorderBrush="#2D3C5A" BorderThickness="1" CornerRadius="10" Padding="10,6" Margin="0,0,8,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="RESOLUTION " Foreground="#95AACA" FontSize="9" FontWeight="Bold"/>
+                                <TextBlock x:Name="NegotiatedModeText" Text="-" Foreground="#DEE8FF" FontSize="9" FontWeight="Bold"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#C0111A2D" BorderBrush="#2D3C5A" BorderThickness="1" CornerRadius="10" Padding="10,6" Margin="0,0,8,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="PIPELINE " Foreground="#95AACA" FontSize="9" FontWeight="Bold"/>
+                                <TextBlock x:Name="ActiveModeText" Text="NV12 -&gt; NV12 (Fixed)" Foreground="#DEE8FF" FontSize="9" FontWeight="Bold"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#C0111A2D" BorderBrush="#2D3C5A" BorderThickness="1" CornerRadius="10" Padding="10,6">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="APPLIED " Foreground="#95AACA" FontSize="9" FontWeight="Bold"/>
+                                <TextBlock x:Name="AppliedAeText" Text="Exp -, Gain -" Foreground="#DEE8FF" FontSize="9" FontWeight="Bold"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    <Border x:Name="RecordingOverlay" Background="#7A150000" CornerRadius="12" Padding="24,12"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed">
+                        <TextBlock Text="REC"
+                                   Foreground="#FF5A5A"
+                                   FontWeight="Bold"
+                                   FontSize="54"/>
+                    </Border>
+                    <Border x:Name="SavingOverlay"
+                            Background="#A0060A12"
+                            Visibility="Collapsed"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="SAVING..."
+                                       Foreground="#00DAF3"
+                                       FontSize="40"
+                                       FontWeight="Bold"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock x:Name="SavingProgressText"
+                                       Text="0 / 0"
+                                       Foreground="#DCE8FF"
+                                       FontSize="20"
+                                       FontWeight="SemiBold"
+                                       Margin="0,8,0,0"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border x:Name="CaptureMenuBarBorder" Grid.Row="1" Style="{StaticResource CardBorder}" Margin="0,10,0,0" Background="{StaticResource PanelBrush}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Resolution" Style="{StaticResource LabelText}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="ResolutionCombo" Width="148" SelectedIndex="0">
+                            <ComboBoxItem Content="3840x2160"/>
+                            <ComboBoxItem Content="3264x2448"/>
+                            <ComboBoxItem Content="2688x1512"/>
+                            <ComboBoxItem Content="2592x1944"/>
+                            <ComboBoxItem Content="2048x1536"/>
+                            <ComboBoxItem Content="1920x1080"/>
+                            <ComboBoxItem Content="1600x1200"/>
+                            <ComboBoxItem Content="4208x3120"/>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="18,0,0,0">
+                        <TextBlock Text="Capture Time" Style="{StaticResource LabelText}" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="CaptureDurationCombo" Width="110" SelectedIndex="0">
+                            <ComboBoxItem Content="1s"/>
+                            <ComboBoxItem Content="2s"/>
+                            <ComboBoxItem Content="3s"/>
+                            <ComboBoxItem Content="5s"/>
+                            <ComboBoxItem Content="Continuous"/>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="3" Orientation="Horizontal">
+                        <Button x:Name="StartStopBtn" Content="Start Preview" Style="{StaticResource PrimaryButton}" Width="150" Margin="0,0,8,0"/>
+                        <Button x:Name="RecordBtn" Content="● Start Recording" Width="160" Height="40" FontWeight="Bold" Foreground="White" Background="#E74C3C" BorderBrush="#A73A30"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <ScrollViewer x:Name="RightMenuScroll" Grid.Column="1" Grid.Row="1" Margin="0,10,0,10" VerticalScrollBarVisibility="Auto">
             <StackPanel>
-                <TextBlock Text="Capture Resolution:" Foreground="#AAA" Margin="0,10,0,2"/>
-                <ComboBox x:Name="ResolutionCombo" SelectedIndex="0" Margin="0,5,0,0">
-                    <ComboBoxItem Content="3840x2160"/>
-                    <ComboBoxItem Content="3264x2448"/>
-                    <ComboBoxItem Content="2688x1512"/>
-                    <ComboBoxItem Content="2592x1944"/>
-                    <ComboBoxItem Content="2048x1536"/>
-                    <ComboBoxItem Content="1920x1080"/>
-                    <ComboBoxItem Content="1600x1200"/>
-                    <ComboBoxItem Content="4208x3120"/>
-                </ComboBox>
-
-                <Button x:Name="StartStopBtn" Content="Start Preview" Margin="0,15,0,0" Height="50" Background="#28A745" Foreground="White" FontSize="16" FontWeight="Bold"/>
-
-                <Separator Margin="0,20,0,20" Background="#333"/>
-
-                <TextBlock Text="Capture Duration (Seconds):" Foreground="#AAA" Margin="0,0,0,2"/>
-                <ComboBox x:Name="CaptureDurationCombo" SelectedIndex="0" Margin="0,5,0,0">
-                    <ComboBoxItem Content="1s"/>
-                    <ComboBoxItem Content="2s"/>
-                    <ComboBoxItem Content="3s"/>
-                    <ComboBoxItem Content="5s"/>
-                    <ComboBoxItem Content="Continuous"/>
-                </ComboBox>
-
-                <Button x:Name="RecordBtn" Content="● Record (Memory Queue)" Margin="0,15,0,0" Height="50" Background="#E74C3C" Foreground="White" FontSize="16" FontWeight="Bold"/>
-
-                <Separator Margin="0,20,0,20" Background="#333"/>
-
-                <TextBlock Text="Save Format:" Foreground="#AAA" Margin="0,0,0,2"/>
-                <ComboBox x:Name="FormatCombo" SelectedIndex="1" Margin="0,5,0,0">
-                    <ComboBoxItem Content="JPEG"/>
-                    <ComboBoxItem Content="PNG"/>
-                    <ComboBoxItem Content="BMP"/>
-                </ComboBox>
-
-                <TextBlock Text="JPEG Auto Quality:" Foreground="#AAA" Margin="0,10,0,2"/>
-                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                    <Slider x:Name="JpegQualitySlider" Minimum="10" Maximum="100" Value="100" Width="170" TickFrequency="10" IsSnapToTickEnabled="True"/>
-                    <TextBox x:Name="JpegQualityValue" Text="100" Foreground="White" Margin="8,0,0,0" VerticalAlignment="Center" Width="52" Background="#2A2A2A" BorderBrush="#555" HorizontalContentAlignment="Center"/>
-                </StackPanel>
-
-                <Button x:Name="BatchSaveBtn" Content="Convert &amp; Save All to Folder" Height="40" Margin="0,20,0,0" IsEnabled="False" FontWeight="SemiBold" Style="{StaticResource DarkActionButtonStyle}"/>
-            </StackPanel>
-        </ScrollViewer>
-
-        <ScrollViewer Grid.Column="2" Grid.Row="0" Grid.RowSpan="2" Margin="10,0,0,0" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
-                <Border Background="#333" CornerRadius="4" Padding="10" Margin="0,0,0,15">
+                <Border Style="{StaticResource CardBorder}" Margin="0,0,0,10">
                     <StackPanel>
-                        <TextBlock Text="Image Settings" Foreground="White" FontWeight="Bold" Margin="0,0,0,10"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <CheckBox x:Name="AutoExposureCheck" Content="Auto Exposure (AEC)" Foreground="White" Margin="0,0,8,0" VerticalAlignment="Center" IsChecked="True"/>
-                        </StackPanel>
+                        <TextBlock Text="Image Settings" Foreground="White" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                        <CheckBox x:Name="AutoExposureCheck" Content="Auto Exposure (AEC)" IsChecked="True" Foreground="#D7E4FF" Margin="0,0,0,8"/>
 
-                        <TextBlock Text="Exposure (UVC Log2):" Foreground="#AAA" Margin="0,5,0,2"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <Slider x:Name="ExposureSlider" Minimum="-11" Maximum="-5" Value="-11" Width="170" TickFrequency="1" IsSnapToTickEnabled="True"/>
-                            <TextBox x:Name="ExposureValue" Text="-11" Foreground="White" Margin="8,0,0,0" VerticalAlignment="Center" Width="42" Background="#2A2A2A" BorderBrush="#555" HorizontalContentAlignment="Center"/>
-                            <TextBlock x:Name="ExposureMsValue" Text="0.488 ms" Foreground="#DDD" Margin="2,0,0,0" VerticalAlignment="Center" Width="92"/>
-                        </StackPanel>
+                        <TextBlock Text="EXPOSURE (UVC LOG2)" Style="{StaticResource LabelText}"/>
+                        <Grid Margin="0,2,0,6">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="56"/><ColumnDefinition Width="82"/></Grid.ColumnDefinitions>
+                            <Slider x:Name="ExposureSlider" Minimum="-11" Maximum="-5" Value="-11"/>
+                            <TextBox Grid.Column="1" x:Name="ExposureValue" Text="-11" Margin="8,0,0,0"/>
+                            <TextBlock Grid.Column="2" x:Name="ExposureMsValue" Text="0.488 ms" Foreground="#C8D7F2" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        </Grid>
 
-                        <TextBlock Text="Gain:" Foreground="#AAA" Margin="0,5,0,2"/>
-                        <StackPanel Orientation="Horizontal">
-                            <Slider x:Name="GainSlider" Minimum="0" Maximum="255" Value="0" Width="170" VerticalAlignment="Center"/>
-                            <TextBox x:Name="GainValue" Text="0" Foreground="White" Margin="8,0,0,0" VerticalAlignment="Center" Width="52" Background="#2A2A2A" BorderBrush="#555" HorizontalContentAlignment="Center"/>
-                        </StackPanel>
+                        <TextBlock Text="GAIN" Style="{StaticResource LabelText}"/>
+                        <Grid Margin="0,2,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="56"/></Grid.ColumnDefinitions>
+                            <Slider x:Name="GainSlider" Minimum="0" Maximum="255" Value="0"/>
+                            <TextBox Grid.Column="1" x:Name="GainValue" Text="0" Margin="8,0,0,0"/>
+                        </Grid>
 
-                        <TextBlock Text="Focus Mode:" Foreground="#AAA" Margin="0,10,0,2"/>
-                        <ComboBox x:Name="FocusModeCombo" SelectedIndex="0" Margin="0,5,0,0">
+                        <TextBlock Text="Focus Mode" Style="{StaticResource LabelText}" Margin="0,10,0,2"/>
+                        <ComboBox x:Name="FocusModeCombo" SelectedIndex="0" Margin="0,0,0,8">
                             <ComboBoxItem Content="Auto Focus"/>
                             <ComboBoxItem Content="Manual Focus"/>
                         </ComboBox>
 
-                        <TextBlock Text="Manual Focus:" Foreground="#AAA" Margin="0,8,0,2"/>
-                        <StackPanel Orientation="Horizontal">
-                            <Slider x:Name="FocusSlider" Minimum="0" Maximum="255" Value="80" Width="170" VerticalAlignment="Center"/>
-                            <TextBox x:Name="FocusValue" Text="80" Foreground="White" Margin="8,0,0,0" VerticalAlignment="Center" Width="52" Background="#2A2A2A" BorderBrush="#555" HorizontalContentAlignment="Center"/>
+                        <TextBlock Text="Manual Focus" Style="{StaticResource LabelText}"/>
+                        <Grid Margin="0,2,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="56"/></Grid.ColumnDefinitions>
+                            <Slider x:Name="FocusSlider" Minimum="0" Maximum="255" Value="80"/>
+                            <TextBox Grid.Column="1" x:Name="FocusValue" Text="80" Margin="8,0,0,0"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource CardBorder}" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="Control Panel" Foreground="White" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                        <TextBlock Text="Brightness" Style="{StaticResource LabelText}"/>
+                        <Grid Margin="0,2,0,6"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="56"/></Grid.ColumnDefinitions><Slider x:Name="BrightnessSlider" Minimum="0" Maximum="255" Value="128"/><TextBox Grid.Column="1" x:Name="BrightnessValue" Text="128" Margin="8,0,0,0"/></Grid>
+                        <TextBlock Text="Contrast" Style="{StaticResource LabelText}"/>
+                        <Grid Margin="0,2,0,6"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="56"/></Grid.ColumnDefinitions><Slider x:Name="ContrastSlider" Minimum="0" Maximum="255" Value="128"/><TextBox Grid.Column="1" x:Name="ContrastValue" Text="128" Margin="8,0,0,0"/></Grid>
+                        <TextBlock Text="Saturation" Style="{StaticResource LabelText}"/>
+                        <Grid Margin="0,2,0,6"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="56"/></Grid.ColumnDefinitions><Slider x:Name="SaturationSlider" Minimum="0" Maximum="255" Value="128"/><TextBox Grid.Column="1" x:Name="SaturationValue" Text="128" Margin="8,0,0,0"/></Grid>
+                        <TextBlock Text="Sharpness" Style="{StaticResource LabelText}"/>
+                        <Grid Margin="0,2,0,8"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="56"/></Grid.ColumnDefinitions><Slider x:Name="SharpnessSlider" Minimum="0" Maximum="255" Value="128"/><TextBox Grid.Column="1" x:Name="SharpnessValue" Text="128" Margin="8,0,0,0"/></Grid>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Backlight" Style="{StaticResource LabelText}" VerticalAlignment="Center"/>
+                            <ToggleButton x:Name="BacklightToggle" Content="OFF" Width="90" Margin="12,0,0,0"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
 
-                <TextBlock Text="Control Panel" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
-                <Border Background="#333" CornerRadius="4" Padding="10">
+                <Border Style="{StaticResource CardBorder}" Height="156">
                     <StackPanel>
-                        <TextBlock Text="Brightness:" Foreground="#AAA"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <Slider x:Name="BrightnessSlider" Minimum="0" Maximum="255" Value="128" Width="170"/>
-                            <TextBox x:Name="BrightnessValue" Text="128" Foreground="White" Margin="8,0,0,0" Width="52" Background="#2A2A2A" BorderBrush="#555" HorizontalContentAlignment="Center"/>
-                        </StackPanel>
-
-                        <TextBlock Text="Contrast:" Foreground="#AAA"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <Slider x:Name="ContrastSlider" Minimum="0" Maximum="255" Value="128" Width="170"/>
-                            <TextBox x:Name="ContrastValue" Text="128" Foreground="White" Margin="8,0,0,0" Width="52" Background="#2A2A2A" BorderBrush="#555" HorizontalContentAlignment="Center"/>
-                        </StackPanel>
-
-                        <TextBlock Text="Saturation:" Foreground="#AAA"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <Slider x:Name="SaturationSlider" Minimum="0" Maximum="255" Value="128" Width="170"/>
-                            <TextBox x:Name="SaturationValue" Text="128" Foreground="White" Margin="8,0,0,0" Width="52" Background="#2A2A2A" BorderBrush="#555" HorizontalContentAlignment="Center"/>
-                        </StackPanel>
-
-                        <TextBlock Text="Sharpness:" Foreground="#AAA"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <Slider x:Name="SharpnessSlider" Minimum="0" Maximum="255" Value="128" Width="170"/>
-                            <TextBox x:Name="SharpnessValue" Text="128" Foreground="White" Margin="8,0,0,0" Width="52" Background="#2A2A2A" BorderBrush="#555" HorizontalContentAlignment="Center"/>
-                        </StackPanel>
-                        <TextBlock Text="Backlight:" Foreground="#AAA"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <ToggleButton x:Name="BacklightToggle" Content="OFF" Width="90" Height="28" Background="#444" Foreground="White"/>
-                            <TextBlock Text="(On/Off)" Foreground="#AAA" Margin="8,4,0,0"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
-                <TextBlock Text="Camera Controls" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,15,0,10"/>
-                <Border Background="#333" CornerRadius="4" Padding="8" Margin="0,0,0,15">
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Connection: " Foreground="#AAA"/>
-                            <TextBlock x:Name="UsbSpeedText" Text="Detecting..." Foreground="#00FF00" FontWeight="Bold"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                            <TextBlock Text="Performance: " Foreground="#AAA"/>
-                            <TextBlock x:Name="ActualFpsText" Text="0.00 fps" Foreground="#00FF00" FontWeight="Bold"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                            <TextBlock Text="Resolution: " Foreground="#AAA"/>
-                            <TextBlock x:Name="CurrentResolutionText" Text="- x -" Foreground="#00FF00" FontWeight="Bold"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                            <TextBlock Text="Negotiated: " Foreground="#AAA"/>
-                            <TextBlock x:Name="NegotiatedModeText" Text="-" Foreground="#00FF00" FontWeight="Bold"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                            <TextBlock Text="Format Pipeline: " Foreground="#AAA"/>
-                            <TextBlock x:Name="ActiveModeText" Text="NV12 -&gt; NV12 (Fixed)" Foreground="#00FF00" FontWeight="Bold"/>
-                        </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                            <TextBlock Text="Applied (AE): " Foreground="#AAA"/>
-                            <TextBlock x:Name="AppliedAeText" Text="Exp -, Gain -" Foreground="#00FF00" FontWeight="Bold"/>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Camera Controls" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Show On Preview" Style="{StaticResource LabelText}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <ToggleButton x:Name="StatusOnPreviewToggle" Style="{StaticResource SmallToggleStyle}" Content="ON" IsChecked="True"/>
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel x:Name="PanelStatusContainer" Height="96">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                <TextBlock Text="FPS Rate: " Style="{StaticResource LabelText}"/>
+                                <TextBlock x:Name="PanelFpsText" Text="0.00 fps" Foreground="#57E389" FontWeight="Bold"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                <TextBlock Text="Connection: " Style="{StaticResource LabelText}"/>
+                                <TextBlock x:Name="PanelUsbSpeedText" Text="Detecting..." Foreground="#4EE58C" FontWeight="Bold"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                <TextBlock Text="Resolution: " Style="{StaticResource LabelText}"/>
+                                <TextBlock x:Name="PanelNegotiatedModeText" Text="-" Foreground="#D8E4FF"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                <TextBlock Text="Pipeline: " Style="{StaticResource LabelText}"/>
+                                <TextBlock x:Name="PanelActiveModeText" Text="NV12 -&gt; NV12 (Fixed)" Foreground="#D8E4FF"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Applied: " Style="{StaticResource LabelText}"/>
+                                <TextBlock x:Name="PanelAppliedAeText" Text="Exp -, Gain -" Foreground="#D8E4FF"/>
+                            </StackPanel>
                         </StackPanel>
                     </StackPanel>
                 </Border>
             </StackPanel>
         </ScrollViewer>
 
-        <Border Grid.Column="0" Grid.Row="1" Margin="0,10,0,0" BorderBrush="#333" BorderThickness="1" Background="#121212">
-            <TextBox x:Name="LogText" Foreground="#00FF00" FontFamily="Consolas" Margin="5" Text="Welcome to Camera SDK Demo..."
-                     IsReadOnly="True" IsReadOnlyCaretVisible="True" AcceptsReturn="True" TextWrapping="Wrap"
-                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                     Background="#121212" BorderThickness="0"/>
+        <Border Grid.Column="0" Grid.ColumnSpan="2" Grid.Row="2" Style="{StaticResource CardBorder}" Margin="0,0,0,0" Padding="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="280"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="LogText" Grid.Column="0" Background="#0A0F1B" Foreground="#77FF77" FontFamily="Consolas"
+                         IsReadOnly="True" IsReadOnlyCaretVisible="True" AcceptsReturn="True" TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" BorderThickness="0"
+                         HorizontalContentAlignment="Left" VerticalContentAlignment="Top"
+                         Height="Auto" VerticalAlignment="Stretch"/>
+                <StackPanel x:Name="SaveSettingsPanel" Grid.Column="1" Margin="12,0,0,14">
+                    <TextBlock Text="Save Settings" Foreground="White" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <Button x:Name="BatchSaveBtn" Content="Convert &amp; Save All to Folder" Style="{StaticResource DarkActionButton}" IsEnabled="False" Margin="0,0,0,14"/>
+                    <TextBlock Text="Save Format" Style="{StaticResource LabelText}"/>
+                    <ComboBox x:Name="FormatCombo" SelectedIndex="1" Margin="0,2,0,8">
+                        <ComboBoxItem Content="JPEG"/>
+                        <ComboBoxItem Content="PNG"/>
+                        <ComboBoxItem Content="BMP"/>
+                    </ComboBox>
+                    <TextBlock Text="JPEG Quality" Style="{StaticResource LabelText}"/>
+                    <Grid Margin="0,2,0,20">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="56"/></Grid.ColumnDefinitions>
+                        <Slider x:Name="JpegQualitySlider" Minimum="10" Maximum="100" Value="100"/>
+                        <TextBox Grid.Column="1" x:Name="JpegQualityValue" Text="100" Margin="8,0,0,0"/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>
+

@@ -16,6 +16,10 @@
     <ProjectReference Include="..\CameraSDK\CameraSDK.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Resource Include="Assets\qcamera_icon.png" />
+  </ItemGroup>
+
   <PropertyGroup>
     <NativeDllPath Condition="Exists('..\..\build-release-x64\bin\CameraCore.dll')">..\..\build-release-x64\bin\CameraCore.dll</NativeDllPath>
     <NativeDllPath Condition="'$(NativeDllPath)' == '' and Exists('..\..\build-vs-x64\bin\Release\CameraCore.dll')">..\..\build-vs-x64\bin\Release\CameraCore.dll</NativeDllPath>

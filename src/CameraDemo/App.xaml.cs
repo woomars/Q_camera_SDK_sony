@@ -10,6 +10,12 @@ namespace CameraDemo
 
         protected override void OnStartup(StartupEventArgs e)
         {
+            // Prefer the Sony module by default unless caller already set an explicit hint.
+            if (string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("CAM_DEVICE_HINT")))
+            {
+                System.Environment.SetEnvironmentVariable("CAM_DEVICE_HINT", "WN Camera|Sony|IMX258");
+            }
+
             bool createdNew;
             _singleInstanceMutex = new Mutex(true, SingleInstanceMutexName, out createdNew);
             if (!createdNew)
