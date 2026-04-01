@@ -44,3 +44,8 @@ dotnet run --project src/CameraDemo/CameraDemo.csproj -c Debug
 ## 7. 참고 문서
 - 개발 변경 정리: `docs/개발_변경_정리_2026-04-01.md`
 - 성과물 목록: `docs/성과물_목록.md`
+
+## 8. 필수 문서
+- SDK User manual: `docs/SDK_User_Manual.md`
+- ATP 문서: `docs/ATP_테스트_문서.md`
+- ATP 결과 보고서: `docs/ATP_결과_보고서_2026-03-31.md`

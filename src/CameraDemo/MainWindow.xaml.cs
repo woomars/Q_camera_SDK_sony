@@ -893,7 +893,11 @@ namespace CameraDemo
             }
 
             if (_recordedFrameCount == 0) {
-                System.Windows.MessageBox.Show("No recorded frames.", "Wait");
+                System.Windows.MessageBox.Show(
+                    "저장할 프레임이 없습니다.\n먼저 Recording을 수행한 후 저장해 주세요.",
+                    "저장 불가",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
                 return;
             }
             if (!_recordInMemoryOnly && (string.IsNullOrWhiteSpace(_spoolRawPath) || !File.Exists(_spoolRawPath) || _spoolTask == null || !_spoolTask.IsCompleted)) {
@@ -901,11 +905,39 @@ namespace CameraDemo
                 return;
             }
 
-            string folder = CreateAutoSaveFolder();
+            // Lock all controls first to avoid any state changes while save location is being chosen.
+            _isBatchSaving = true;
+            BatchSaveBtn.IsEnabled = false;
+            StartStopBtn.IsEnabled = false;
+            RecordBtn.IsEnabled = false;
+            UpdateRecordingPanelLockState();
+            UpdateSavingUiState(true);
+
+            string? folder = null;
+            using (var fbd = new System.Windows.Forms.FolderBrowserDialog())
+            {
+                fbd.Description = "저장할 폴더를 선택하세요.";
+                fbd.UseDescriptionForTitle = true;
+                if (fbd.ShowDialog() == System.Windows.Forms.DialogResult.OK) {
+                    folder = fbd.SelectedPath;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(folder)) {
+                _isBatchSaving = false;
+                StartStopBtn.IsEnabled = true;
+                RecordBtn.IsEnabled = true;
+                BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
+                UpdateRecordingPanelLockState();
+                UpdateSavingUiState(false);
+                Log("Batch save canceled (folder selection canceled).");
+                return;
+            }
+
             string format = ((System.Windows.Controls.ComboBoxItem)FormatCombo.SelectedItem).Content.ToString()?.ToLower() ?? "png";
             int quality = (int)JpegQualitySlider.Value;
             int count = _recordedFrameCount;
-            Log($"Auto save folder: {folder}");
+            Log($"Selected save folder: {folder}");
 
             bool wasRunning = _isRunning;
             if (_isRunning) {
@@ -925,20 +957,16 @@ namespace CameraDemo
                         "Save Aborted",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
+                    _isBatchSaving = false;
                     StartStopBtn.IsEnabled = true;
                     RecordBtn.IsEnabled = true;
                     BatchSaveBtn.IsEnabled = _recordedFrameCount > 0;
                     UpdateRecordingPanelLockState();
+                    UpdateSavingUiState(false);
                     return;
                 }
             }
 
-            _isBatchSaving = true;
-            BatchSaveBtn.IsEnabled = false;
-            StartStopBtn.IsEnabled = false;
-            RecordBtn.IsEnabled = false;
-            UpdateRecordingPanelLockState();
-            UpdateSavingUiState(true);
             SetSavingProgress(0, count);
             Log($"Starting batch format encoding of {count} RAW frames to {folder} as {format.ToUpper()}...");
             var batchStartUtc = DateTime.UtcNow;
@@ -1040,17 +1068,6 @@ namespace CameraDemo
                     }
                 }
             }
-        }
-
-        private static string CreateAutoSaveFolder()
-        {
-            // Use deterministic auto-save session folders to avoid file dialog freeze issues.
-            string root = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "saved_frames");
-            Directory.CreateDirectory(root);
-            string session = $"save_{DateTime.Now:yyyyMMdd_HHmmss_fff}";
-            string folder = Path.Combine(root, session);
-            Directory.CreateDirectory(folder);
-            return folder;
         }
 
         private static Task RunOnStaThreadAsync(Action action)
