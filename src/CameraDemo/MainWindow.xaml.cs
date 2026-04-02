@@ -16,7 +16,7 @@ namespace CameraDemo
 {
     public partial class MainWindow : Window
     {
-        // ---- Camera runtime / preview state ----
+        // ---- 카메라 런타임 / 프리뷰 상태 ----
         private CameraManager _camera;
         private WriteableBitmap? _bitmap;
         private bool _isRunning = false;
@@ -46,7 +46,7 @@ namespace CameraDemo
         private readonly List<RawFrameChunk> _recordedFramesMemory = new List<RawFrameChunk>();
         private readonly object _recordedFramesLock = new object();
 
-        // ---- Recording timing / frame bookkeeping ----
+        // ---- 녹화 시간 / 프레임 관리 ----
         private bool _isRecording = false;
         private DateTime _recordStartTimeUtc;
         private bool _recordDurationStarted = false;
@@ -54,8 +54,8 @@ namespace CameraDemo
         private TimeSpan _recordDuration;
         private int _frameWidth;
         private int _frameHeight;
-        private byte[]? _previewBuffer; // Managed buffer for safe UI rendering
-        private bool _isUIPainting = false; // Throttling flag for UI display
+        private byte[]? _previewBuffer; // UI에 안전하게 표시하기 위한 관리 버퍼
+        private bool _isUIPainting = false; // UI 표시 빈도 제어용 플래그
         private bool _gainSetWarningShown = false;
         private readonly long _maxExposureRawForTargetFps = (long)Math.Floor(Math.Log(1.0 / TargetFps, 2.0));
         private long _appliedExposureMaxRaw;
@@ -71,11 +71,11 @@ namespace CameraDemo
         private FocusMode _focusModeBeforeRecording = FocusMode.Auto;
         private int _manualFocusValue = 80;
         private DateTime _lastPreviewUiUpdateUtc = DateTime.MinValue;
-        private readonly TimeSpan _previewUiInterval = TimeSpan.FromMilliseconds(66); // cap preview rendering to ~15fps
+        private readonly TimeSpan _previewUiInterval = TimeSpan.FromMilliseconds(66); // 프리뷰 렌더링을 약 15fps로 제한
         private readonly object _logFileLock = new object();
         private readonly string _logFilePath;
         private const int MaxLogChars = 120000;
-        // ---- Target Sony camera availability / reconnect ----
+        // ---- Sony 대상 카메라 연결 상태 / 재연결 ----
         private bool _targetCameraReady = true;
         private bool _cameraReady = false;
         private int _lastInitHr = 0;
@@ -218,7 +218,7 @@ namespace CameraDemo
 
         private bool InitializeCamera()
         {
-            // Always re-evaluate camera availability on each initialize/reinitialize path.
+            // 초기화/재초기화 경로마다 카메라 연결 상태를 다시 확인한다.
             _targetCameraReady = false;
             _cameraReady = false;
             _lastInitHr = 0;
@@ -325,7 +325,7 @@ namespace CameraDemo
 
         private async void ReconnectTimer_Tick(object? sender, EventArgs e)
         {
-            // Guard against re-entry while recording/saving or while another reconnect attempt is active.
+            // 녹화/저장 중이거나 재연결이 이미 진행 중이면 중복 진입을 막는다.
             if (_reconnectInProgress || _cameraReady || _isRunning || _isRecording || _isBatchSaving) {
                 return;
             }
@@ -389,7 +389,7 @@ namespace CameraDemo
 
         private void UpdateRecordingPanelLockState()
         {
-            // Single lock gate for recording and batch-save periods.
+            // 녹화와 일괄 저장 중에는 동일한 잠금 규칙을 적용한다.
             bool locked = _isRecording || _isBatchSaving;
             CaptureDurationCombo.IsEnabled = !locked;
 
@@ -426,7 +426,7 @@ namespace CameraDemo
             _autoExposureBeforeRecording = AutoExposureCheck.IsChecked == true;
             _backlightOnBeforeRecording = BacklightToggle.IsChecked == true;
 
-            // Recording always uses manual exposure conditions for deterministic capture.
+            // 녹화는 항상 수동 노출 조건으로 고정해 결과를 일정하게 유지한다.
             if (_autoExposureSupported) AutoExposureCheck.IsChecked = false;
             ApplyAutoControlsToCamera();
 
@@ -434,7 +434,7 @@ namespace CameraDemo
             BacklightToggle.IsEnabled = false;
 
             if (_focusModeBeforeRecording == FocusMode.Auto) {
-                // Snapshot autofocus result right before recording, then lock to manual.
+                // 녹화 직전 자동 초점 값을 읽어 온 뒤 수동으로 잠근다.
                 _camera.SetFocusMode(FocusMode.Auto);
                 Thread.Sleep(120);
                 int afValue = _camera.GetFocus();
@@ -507,7 +507,7 @@ namespace CameraDemo
 
         private void UpdateSavingUiState(bool saving)
         {
-            // During save, block all interactive controls to avoid race conditions.
+            // 저장 중에는 경쟁 상태를 막기 위해 모든 상호작용 컨트롤을 잠근다.
             if (CaptureMenuBarBorder != null) {
                 CaptureMenuBarBorder.IsEnabled = !saving;
             }
@@ -645,7 +645,7 @@ namespace CameraDemo
                 NormalizeSigned32Range(ref min, ref max, ref step, ref def);
 
                 if (min > max) {
-                    // Final safety net against malformed driver ranges.
+                    // 드라이버가 비정상 범위를 반환해도 마지막으로 한 번 더 보정한다.
                     (min, max) = (max, min);
                 }
 
@@ -909,7 +909,7 @@ namespace CameraDemo
             }
 
             if (_isRecording) {
-                // Stop manual recording
+                // 수동 녹화를 중지한다
                 _isRecording = false;
                 RestoreFocusAfterRecording();
                 RecordBtn.Content = "● Start Recording";
@@ -919,7 +919,7 @@ namespace CameraDemo
                     _hasUnsavedCapture = _recordedFrameCount > 0;
                     UpdateBatchSaveButtonState();
                 } else {
-                    _rawQueue?.CompleteAdding(); // Let the background spooler finish remaining items
+                    _rawQueue?.CompleteAdding(); // 백그라운드 스풀러가 남은 항목을 마저 처리하도록 둔다
                     Log($"Recording stopped manually. Spooling remaining frames to SSD... (queue drop {_recordDroppedByQueue})");
                 }
             } else {
@@ -1001,7 +1001,7 @@ namespace CameraDemo
                 return;
             }
 
-            // Lock all controls first to avoid any state changes while save location is being chosen.
+            // 저장 위치를 고르는 동안 상태가 바뀌지 않도록 먼저 모든 컨트롤을 잠근다.
             _isBatchSaving = true;
             UpdateBatchSaveButtonState();
             StartStopBtn.IsEnabled = false;
@@ -1037,7 +1037,7 @@ namespace CameraDemo
 
             bool wasRunning = _isRunning;
             if (_isRunning) {
-                // Save path operates on stable buffers; pause preview first to avoid UI/capture contention.
+                // 저장은 안정된 버퍼 기준으로 처리하므로 UI/캡처 충돌을 막기 위해 먼저 프리뷰를 멈춘다.
                 _resolutionChangeAllowedByUserStop = false;
                 var stopTask = Task.Run(() => _camera.Stop());
                 var stopDone = await Task.WhenAny(stopTask, Task.Delay(2500));
@@ -1070,7 +1070,7 @@ namespace CameraDemo
 
             try
             {
-                // Run bitmap encoding on an STA thread (WIC-friendly path) to keep UI responsive.
+                // 비트맵 인코딩은 STA 스레드에서 수행해 UI 응답성을 유지한다.
                 await RunOnStaThreadAsync(() =>
                 {
                     var lastProgressAt = DateTime.UtcNow;
@@ -1162,7 +1162,7 @@ namespace CameraDemo
                         _resolutionChangeAllowedByUserStop = false;
                         StartStopBtn.Content = "Stop Preview";
                         UpdatePreviewStoppedOverlay();
-                        // StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 53, 69));
+                        // Start/Stop 버튼 배경색 커스터마이즈 예시
                         Log("Preview resumed after batch save.");
                     }
                 }
@@ -1210,7 +1210,7 @@ namespace CameraDemo
                     ApplyAutoControlsToCamera();
                     StartStopBtn.Content = "Stop Preview";
                     UpdatePreviewStoppedOverlay();
-                    // StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(220, 53, 69)); // Bootstrap Danger Red
+                    // Start/Stop 버튼 배경색 커스터마이즈 예시 // Bootstrap Danger Red
                     UpdateResolutionControlState();
                     UpdateRecordingPanelLockState();
                     Log("Preview started.");
@@ -1240,7 +1240,7 @@ namespace CameraDemo
                     _resolutionChangeAllowedByUserStop = true;
                     StartStopBtn.Content = "Start Preview";
                     UpdatePreviewStoppedOverlay();
-                    // StartStopBtn.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(40, 167, 69)); // Bootstrap Success Green
+                    // Start/Stop 버튼 배경색 커스터마이즈 예시
                     UpdateResolutionControlState();
                     UpdateRecordingPanelLockState();
                     Log("Preview stopped.");
@@ -1257,7 +1257,7 @@ namespace CameraDemo
             _frameWidth = width;
             _frameHeight = height;
 
-            // Recording path is prioritized for throughput (skip preview rendering while recording).
+            // 녹화 중에는 처리량을 우선해 프리뷰 렌더링을 생략한다.
             if (_isRecording)
             {
                 if (!_recordDurationStarted) {
@@ -1314,11 +1314,11 @@ namespace CameraDemo
                     }
                 }
 
-                // During recording, skip preview rendering to maximize capture throughput.
+                // 녹화 중에는 캡처 처리량을 높이기 위해 프리뷰 렌더링을 건너뛴다.
                 return;
             }
 
-            // Preview path (non-recording): throttle UI updates to reduce callback overhead.
+            // 일반 프리뷰 경로에서는 UI 갱신 빈도를 줄여 콜백 부담을 낮춘다.
             var nowUtc = DateTime.UtcNow;
             if (nowUtc - _lastPreviewUiUpdateUtc < _previewUiInterval) {
                 return;
@@ -1498,7 +1498,7 @@ namespace CameraDemo
                     File.AppendAllText(_logFilePath, line + Environment.NewLine);
                 }
             } catch {
-                // ignore file logging failure
+                // 파일 로그 기록 실패는 동작을 막지 않고 무시한다
             }
 
             if (Dispatcher.CheckAccess()) {

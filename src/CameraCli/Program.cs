@@ -19,7 +19,7 @@ static class Program
         public bool SweepExposure { get; set; } = false;
         public bool SweepBrightness { get; set; } = false;
         public long SweepBrightnessStart { get; set; } = -12;
-        public long SweepBrightnessEnd { get; set; } = -20; // ~1us
+        public long SweepBrightnessEnd { get; set; } = -20; // 약 1us
         public int SweepBrightnessSamples { get; set; } = 8;
         public bool DumpProcAmp { get; set; } = false;
         public bool ProbeSharpness { get; set; } = false;

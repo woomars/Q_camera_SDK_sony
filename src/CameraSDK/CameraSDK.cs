@@ -106,9 +106,9 @@ namespace CameraSDK
         [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Camera_Stop();
 
-        // High level event
+        // 상위 수준 프레임 이벤트
         public event Action<IntPtr, int, int, int, int>? OnFrameReceived;
-        private NativeFrameCallback _nativeCallback; // Keep delegate alive
+        private NativeFrameCallback _nativeCallback; // 네이티브 콜백 델리게이트가 해제되지 않도록 유지
 
         public CameraManager()
         {

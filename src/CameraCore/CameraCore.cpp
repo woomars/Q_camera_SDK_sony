@@ -28,7 +28,7 @@
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "shlwapi.lib")
 
-// Y800 (Monochrome 8-bit) GUID definition
+// Y800(8비트 흑백) GUID 정의
 static const GUID MFVideoFormat_Y800 = { 0x30303859, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 } };
 
 static std::atomic<bool> g_initialized{false};
@@ -36,18 +36,18 @@ static std::atomic<bool> g_running{false};
 static long g_exposure = 1000;
 static long g_gain = 0;
 static long g_focus = 0;
-static int g_focus_mode = 1; // 0 manual, 1 auto
-static int g_trigger_mode = 0; // 0: Continuous, 1: Software, 2: Hardware
+static int g_focus_mode = 1; // 0: 수동, 1: 자동
+static int g_trigger_mode = 0; // 0: 연속, 1: 소프트웨어, 2: 하드웨어
 static FrameCallback g_callback = nullptr;
 
 static std::thread g_capture_thread;
 static IMFSourceReader* g_pReader = nullptr;
 static IMFMediaSource* g_pSource = nullptr;
-static int g_usb_speed = 0; // 0: Unknown, 2: 2.0, 3: 3.0
+static int g_usb_speed = 0; // 0: 알 수 없음, 2: USB 2.0, 3: USB 3.0
 static double g_current_fps = 0;
 static long g_frame_count = 0;
 static DWORD g_last_fps_time = 0;
-static int g_preferred_4k_mode = 0; // fixed: 0 = MJPEG
+static int g_preferred_4k_mode = 0; // 고정 기본값: 0 = MJPEG
 static int g_active_4k_mode = 0;
 static int g_preferred_width = 3840;
 static int g_preferred_height = 2160;
@@ -59,7 +59,7 @@ static long g_last_hresult = S_OK;
 static double g_negotiated_fps = 0.0;
 static int g_negotiated_width = 0;
 static int g_negotiated_height = 0;
-static int g_negotiated_subtype = 0; // 0=Unknown, 1=NV12, 2=MJPG, 3=YUY2
+static int g_negotiated_subtype = 0; // 0=알 수 없음, 1=NV12, 2=MJPG, 3=YUY2
 static double g_timestamp_fps = 0.0;
 static long g_estimated_dropped_frames = 0;
 static LONGLONG g_prev_sample_ts = -1;
@@ -86,7 +86,7 @@ template <class T> void SafeRelease(T** ppT) {
     }
 }
 
-// Enumerate video capture devices and create a media source for the first one found
+// 비디오 캡처 장치를 열거하고 우선순위가 가장 높은 장치의 미디어 소스를 생성한다
 HRESULT CreateVideoCaptureDevice(IMFMediaSource** ppSource) {
     *ppSource = NULL;
     IMFAttributes* pConfig = NULL;
@@ -144,7 +144,7 @@ HRESULT CreateVideoCaptureDevice(IMFMediaSource** ppSource) {
                 (name.find(L"imx258") != std::wstring::npos) ||
                 (name.find(L"wn camera") != std::wstring::npos) ||
                 (name.find(L"q-camera") != std::wstring::npos) ||
-                (link.find(L"vid_054c") != std::wstring::npos); // Sony vendor id
+                (link.find(L"vid_054c") != std::wstring::npos); // Sony 벤더 ID
         };
 
         auto isVirtualCamera = [&](const std::wstring& nameRaw) {
@@ -312,7 +312,7 @@ HRESULT CreateVideoCaptureDevice(IMFMediaSource** ppSource) {
 
 void CaptureLoop() {
     CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    // Avoid starving UI/input threads when camera glitches or hot-plug events happen.
+    // 카메라 이상 동작이나 핫플러그 시 UI/입력 스레드가 굶지 않도록 한다.
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
     std::cout << "[CameraCore] Capture loop started." << std::endl;
     HRESULT hr = S_OK;
@@ -323,7 +323,7 @@ void CaptureLoop() {
 
     while (g_running) {
         if (g_trigger_mode == 0 || g_trigger_mode == 1) { 
-            // Read sample synchronously
+            // 샘플을 동기 방식으로 읽는다
             hr = g_pReader->ReadSample(streamIndex, 0, NULL, &flags, &llTimeStamp, &pSample);
             
             if (FAILED(hr)) {
@@ -377,7 +377,7 @@ void CaptureLoop() {
                             if (g_frame_width > 0 && g_frame_height > 0 && g_callback) {
                                 long payloadSize = 0;
                                 if (g_negotiated_subtype == 2) {
-                                    payloadSize = (long)cbData; // MJPEG compressed frame size
+                                    payloadSize = (long)cbData; // MJPEG 압축 프레임 크기
                                 } else {
                                     payloadSize = g_y_plane_size > 0 ? g_y_plane_size : (g_frame_width * g_frame_height);
                                     if ((DWORD)payloadSize > cbData) {
@@ -394,7 +394,7 @@ void CaptureLoop() {
                 SafeRelease(&pSample);
             }
             
-            // Update FPS counter
+            // FPS 카운터를 갱신한다
             g_frame_count++;
             DWORD now = GetTickCount();
             if (now - g_last_fps_time >= 1000) {
@@ -497,7 +497,7 @@ extern "C" {
             return CAM_ERROR_DEVICE_NOT_FOUND;
         }
 
-        // --- Negotiate preferred resolution @ 30FPS ---
+        // --- 30FPS 기준 선호 해상도를 협상한다 ---
         IMFMediaType* pPreferredMjpeg = NULL;
         IMFMediaType* pPreferredNv12 = NULL;
         DWORD typeIndex = 0;
@@ -540,7 +540,7 @@ extern "C" {
         if (pChosenNative) {
             std::cout << "[CameraCore] Forced Lock: " << g_preferred_width << "x" << g_preferred_height << " @ " << chosenFps << " fps (" << chosenName << ")." << std::endl;
 
-            // Force selected native mode.
+            // 선택한 네이티브 모드를 강제로 적용한다.
             MFSetAttributeSize(pChosenNative, MF_MT_FRAME_SIZE, (UINT32)g_preferred_width, (UINT32)g_preferred_height);
             MFSetAttributeRatio(pChosenNative, MF_MT_FRAME_RATE, 30, 1);
             HRESULT hrSetNative = g_pReader->SetCurrentMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, pChosenNative);
@@ -581,11 +581,11 @@ extern "C" {
         SafeRelease(&pPreferredNv12);
         UpdateFrameLayoutFromCurrentType();
 
-        // --- USB Speed Detection (Heuristic via Bandwidth) ---
-        // USB 2.0 max bandwidth is ~60MB/s (theoretically). 
-        // 4K @ 10fps YUY2 (Uncompressed) requires ~160MB/s.
-        // If the native reader reports high-bandwidth uncompressed modes, it's USB 3.0.
-        g_usb_speed = 2; // Default to 2.0
+        // --- 대역폭 기반 추정으로 USB 속도를 판별한다 ---
+        // USB 2.0의 이론상 최대 대역폭은 약 60MB/s이다. 
+        // 4K 10fps YUY2(비압축)는 약 160MB/s가 필요하다.
+        // 네이티브 리더가 고대역폭 비압축 모드를 보고하면 USB 3.0으로 판단한다.
+        g_usb_speed = 2; // 기본값은 USB 2.0으로 둔다
         DWORD checkIdx = 0;
         IMFMediaType* pCheckType = NULL;
         while (SUCCEEDED(g_pReader->GetNativeMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, checkIdx++, &pCheckType))) {
@@ -596,7 +596,7 @@ extern "C" {
                     SUCCEEDED(MFGetAttributeRatio(pCheckType, MF_MT_FRAME_RATE, &num, &den))) {
                     double fps = (den > 0) ? (double)num / den : 0.0;
                     double bw = (double)w * h * 2.0 * fps / (1024.0 * 1024.0);
-                    if (bw > 100.0) { // If mode > 100MB/s, it's definitely USB 3.0
+                    if (bw > 100.0) { // 모드 대역폭이 100MB/s를 넘으면 USB 3.0으로 본다
                         g_usb_speed = 3;
                         SafeRelease(&pCheckType);
                         break;
@@ -630,7 +630,7 @@ extern "C" {
         IAMCameraControl* pControl = NULL;
         int result = CAM_ERROR_CAPTURE_FAILED;
         if (SUCCEEDED(g_pSource->QueryInterface(IID_PPV_ARGS(&pControl)))) {
-            // value is log2(seconds), e.g. -11 is ~0.48ms
+            // 값은 log2(초) 기준이며, 예를 들어 -11은 약 0.48ms이다
             if (SUCCEEDED(pControl->Set(CameraControl_Exposure, value, CameraControl_Flags_Manual))) {
                 g_exposure = value;
                 result = CAM_SUCCESS;
@@ -922,7 +922,7 @@ extern "C" {
         if (!g_running) return CAM_SUCCESS;
         g_running = false;
         if (g_pReader) {
-            // Unblock any pending ReadSample during unplug/replug events.
+            // 장치 분리/재연결 시 대기 중인 ReadSample 호출을 해제한다.
             g_pReader->Flush((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM);
         }
         if (g_capture_thread.joinable()) {
