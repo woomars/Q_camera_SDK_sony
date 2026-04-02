@@ -1,4 +1,4 @@
-﻿# 24fps 해상도 요약 (NV12 / MJPEG)
+# 24fps 해상도 요약 (NV12 / MJPEG)
 
 ## 기준
 - 측정 조건: `노출 -11`, `Gain 255`, `2초 측정`, 해상도별 `3회`
@@ -17,6 +17,6 @@
   - 4208x3120: 약 5.3 fps
   - 3264x2448: 약 21.2 fps
 
-## 원본 로그
-- `reports/nv12_resolution_test_2026-03-31.txt`
-- `reports/mjpeg_resolution_test_7_8_2026-03-31.txt`
+## 참고 문서
+- ATP 결과 보고서: `docs/ATP_결과_보고서_2026-03-31.md`
+- 4K30 조사 문서: `docs/4k30_investigation_report_2026-03-31.md`

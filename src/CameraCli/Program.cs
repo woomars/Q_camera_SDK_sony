@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using CameraSDK;
@@ -18,9 +19,10 @@ static class Program
         public bool SweepExposure { get; set; } = false;
         public bool SweepBrightness { get; set; } = false;
         public long SweepBrightnessStart { get; set; } = -12;
-        public long SweepBrightnessEnd { get; set; } = -20; // ~1us
+        public long SweepBrightnessEnd { get; set; } = -20; // 약 1us
         public int SweepBrightnessSamples { get; set; } = 8;
         public bool DumpProcAmp { get; set; } = false;
+        public bool ProbeSharpness { get; set; } = false;
     }
 
     static int Main(string[] args)
@@ -86,6 +88,9 @@ static class Program
         bool lumaArmed = false;
         var lumaReady = new ManualResetEventSlim(false);
         double lumaMean = 0.0;
+        bool edgeArmed = false;
+        var edgeReady = new ManualResetEventSlim(false);
+        double edgeMetric = 0.0;
 
         cam.OnFrameReceived += (pBuffer, _, _, _, dataSize) =>
         {
@@ -109,6 +114,31 @@ static class Program
                 }
                 lumaArmed = false;
                 lumaReady.Set();
+            }
+
+            if (edgeArmed && nsub == 1 && nw > 2 && nh > 2)
+            {
+                int yPlaneBytes = Math.Min(dataSize, nw * nh);
+                if (yPlaneBytes >= nw * nh)
+                {
+                    byte[] tmp = ArrayPool<byte>.Shared.Rent(yPlaneBytes);
+                    try
+                    {
+                        Marshal.Copy(pBuffer, tmp, 0, yPlaneBytes);
+                        edgeMetric = ComputeEdgeMetric(tmp, nw, nh);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(tmp);
+                    }
+                }
+                else
+                {
+                    edgeMetric = 0.0;
+                }
+
+                edgeArmed = false;
+                edgeReady.Set();
             }
 
             if (!measuring) return;
@@ -233,6 +263,52 @@ static class Program
                 }
             }
         }
+        else if (opts.ProbeSharpness)
+        {
+            if (nsub != 1)
+            {
+                Console.WriteLine("[ERR] Sharpness probe requires NV12 negotiated subtype.");
+                cam.Stop();
+                return 4;
+            }
+
+            if (!cam.TryGetProcAmpRange(ProcAmpProperty.Sharpness, out long sMin, out long sMax, out long sStep, out long sDef, out long sCaps))
+            {
+                Console.WriteLine("[ERR] Sharpness is not exposed by the driver.");
+                cam.Stop();
+                return 5;
+            }
+
+            Console.WriteLine($"[SHARP] range=[{sMin},{sMax}] step={sStep} def={sDef} caps={sCaps}");
+            foreach (long candidate in DistinctValues(sMin, sDef, sMax))
+            {
+                bool setOk = cam.SetProcAmpValue(ProcAmpProperty.Sharpness, candidate, false);
+                Thread.Sleep(250);
+
+                bool readOk;
+                long appliedValue = 0;
+                long appliedFlags = 0;
+                try
+                {
+                    readOk = cam.TryGetProcAmpValue(ProcAmpProperty.Sharpness, out appliedValue, out appliedFlags);
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    readOk = false;
+                    Console.WriteLine("[WARN] Camera_GetProcAmpValue export not found. Continuing sharpness probe without readback.");
+                }
+
+                edgeReady.Reset();
+                edgeArmed = true;
+                bool edgeOk = edgeReady.Wait(TimeSpan.FromSeconds(2));
+                if (!edgeOk)
+                {
+                    edgeArmed = false;
+                }
+
+                Console.WriteLine($"[SHARP] req={candidate}, set={(setOk ? "OK" : "FAIL")}, read={(readOk ? appliedValue.ToString() : "N/A")}, flags={(readOk ? appliedFlags.ToString() : "N/A")}, edge={(edgeOk ? edgeMetric.ToString("F3") : "TIMEOUT")}");
+            }
+        }
         else
         {
             for (int i = 1; i <= opts.Runs; i++)
@@ -309,6 +385,10 @@ static class Program
             {
                 opt.DumpProcAmp = true;
             }
+            else if (a == "--probe-sharpness")
+            {
+                opt.ProbeSharpness = true;
+            }
         }
         return opt;
     }
@@ -353,7 +433,46 @@ static class Program
 
         Console.WriteLine($"[{tag}] frames={fc}, elapsed={elapsed:F3}s, fps={fpsByCount:F2}, ts={tsFps:F2}, sdk={sdkFps:F2}, drop={drop}, payload={mbps:F2} MB/s");
     }
+    private static IEnumerable<long> DistinctValues(params long[] values)
+    {
+        HashSet<long> seen = new();
+        foreach (long value in values)
+        {
+            if (seen.Add(value))
+            {
+                yield return value;
+            }
+        }
+    }
+
+    private static double ComputeEdgeMetric(byte[] yPlane, int width, int height)
+    {
+        long sum = 0;
+        long count = 0;
+
+        for (int y = 1; y < height - 1; y += 4)
+        {
+            int row = y * width;
+            int rowPrev = row - width;
+            int rowNext = row + width;
+
+            for (int x = 1; x < width - 1; x += 4)
+            {
+                int idx = row + x;
+                int gx = Math.Abs(yPlane[idx + 1] - yPlane[idx - 1]);
+                int gy = Math.Abs(yPlane[rowNext + x] - yPlane[rowPrev + x]);
+                sum += gx + gy;
+                count++;
+            }
+        }
+
+        return count == 0 ? 0.0 : (double)sum / count;
+    }
 }
+
+
+
+
 
 
 

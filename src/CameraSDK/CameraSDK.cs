@@ -84,6 +84,9 @@ namespace CameraSDK
         
         [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Camera_GetProcAmpRange(int property, out long min, out long max, out long step, out long def, out long caps);
+
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int Camera_GetProcAmpValue(int property, out long value, out long flags);
         
         [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Camera_SetProcAmpValue(int property, long value, int useAuto);
@@ -103,9 +106,9 @@ namespace CameraSDK
         [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
         private static extern int Camera_Stop();
 
-        // High level event
+        // 상위 수준 프레임 이벤트
         public event Action<IntPtr, int, int, int, int>? OnFrameReceived;
-        private NativeFrameCallback _nativeCallback; // Keep delegate alive
+        private NativeFrameCallback _nativeCallback; // 네이티브 콜백 델리게이트가 해제되지 않도록 유지
 
         public CameraManager()
         {
@@ -256,6 +259,12 @@ namespace CameraSDK
         public bool TryGetProcAmpRange(ProcAmpProperty property, out long min, out long max, out long step, out long def, out long caps)
         {
             int rc = Camera_GetProcAmpRange((int)property, out min, out max, out step, out def, out caps);
+            return rc == 0;
+        }
+
+        public bool TryGetProcAmpValue(ProcAmpProperty property, out long value, out long flags)
+        {
+            int rc = Camera_GetProcAmpValue((int)property, out value, out flags);
             return rc == 0;
         }
         

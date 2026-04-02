@@ -1,7 +1,7 @@
 # Q Camera SDK (Sony 13MP UVC)
 
 Windows 기반 UVC 카메라 제어/촬영 프로젝트입니다.  
-현재 운영 정책은 **NV12 고정 + 24fps 목표**입니다.
+현재 운영 정책은 **NV12 고정 + 24fps 목표**이며, 1단계 개발 범위는 완료되었습니다.
 
 ## 1. 현재 정책
 - 포맷: **NV12 -> NV12 (Fixed)**
@@ -25,6 +25,8 @@ Windows 기반 UVC 카메라 제어/촬영 프로젝트입니다.
 - Camera Controls 표시 항목: Connection / Resolution / Pipeline / Applied
 - Exposure/Gain/Focus 및 Control Panel 값은 슬라이더/텍스트 입력 시 즉시 반영
 - AEC/AF는 Preview 기준 동작, Recording 시에는 수동값으로 잠금
+- AEC OFF 시 마지막 수동 Exposure/Gain 값으로 즉시 복귀
+- AEC ON 상태에서는 Exposure/Gain 수동 변경 비활성화
 - Auto Exposure ON 상태에서는 Recording 시작 차단
 - Preview가 사용자 `Stop Preview` 상태가 아니면 Resolution 변경 차단
 
@@ -48,7 +50,8 @@ dotnet run --project src/CameraDemo/CameraDemo.csproj -c Debug
 ## 7. 참고 문서
 - 개발 변경 정리: `docs/개발_변경_정리_2026-04-01.md`
 - 성과물 목록: `docs/성과물_목록.md`
-- 기능 검증 브랜치: `codex/feature-validation` (생성 예정)
+- 기능 검증 브랜치: `codex/feature-validation`
+- Sharpness CLI 검증: `src/CameraCli`의 `--dump-procamp`, `--probe-sharpness`
 
 ## 8. 필수 문서
 - SDK User manual: `docs/SDK_User_Manual.md`
