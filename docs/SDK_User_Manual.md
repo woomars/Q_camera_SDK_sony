@@ -27,7 +27,7 @@ dotnet run --project src/CameraDemo/CameraDemo.csproj -c Debug
 ## 5. 현재 UI 화면
 아래 이미지는 현재 `CameraDemo` 실행 화면입니다.
 
-![현재 CameraDemo UI](./assets/camera_demo_ui.png)
+<img src="./assets/camera_demo_ui.png" alt="현재 CameraDemo UI" width="100%" />
 
 이미지가 보이지 않으면 [원본 이미지 파일](./assets/camera_demo_ui.png)을 직접 열어 확인할 수 있습니다.
 
