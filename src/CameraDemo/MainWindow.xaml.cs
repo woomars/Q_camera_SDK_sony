@@ -66,6 +66,7 @@ namespace CameraDemo
         private bool _backlightSupported = false;
         private bool _autoExposureBeforeRecording = false;
         private bool _backlightOnBeforeRecording = false;
+        private long _manualExposureValue = ExposureMinRaw;
         private FocusMode _selectedFocusMode = FocusMode.Auto;
         private FocusMode _focusModeBeforeRecording = FocusMode.Auto;
         private int _manualFocusValue = 80;
@@ -102,16 +103,12 @@ namespace CameraDemo
             };
 
             ConfigureExposureRangeForTargetFps();
+            _manualExposureValue = (long)ExposureSlider.Value;
 
             GainSlider.ValueChanged += (s, e) => {
                 int gain = (int)e.NewValue;
                 GainValue.Text = gain.ToString();
-                bool ok = _camera.SetGain(gain);
-                GainValue.Foreground = ok ? System.Windows.Media.Brushes.White : System.Windows.Media.Brushes.OrangeRed;
-                if (!ok && !_gainSetWarningShown) {
-                    _gainSetWarningShown = true;
-                    Log("Warning: Gain control was rejected by camera/driver. Check UVC gain support.");
-                }
+                ApplyManualGainFromUi();
             };
 
             FocusModeCombo.SelectionChanged += (s, e) =>
@@ -365,7 +362,7 @@ namespace CameraDemo
 
         private void ApplyUiValuesToCamera()
         {
-            _camera.SetGain((int)GainSlider.Value);
+            ApplyManualGainFromUi();
             ApplyAutoControlsToCamera();
             ApplyFocusToCamera();
             ApplyProcAmpValuesToCamera();
@@ -732,6 +729,11 @@ namespace CameraDemo
             if (_isRecording) {
                 return;
             }
+
+            if (AutoExposureCheck.IsChecked != true) {
+                _manualExposureValue = (long)ExposureSlider.Value;
+            }
+
             if (_isRunning) {
                 ApplyAutoControlsToCamera();
             } else {
@@ -755,11 +757,31 @@ namespace CameraDemo
         private void ApplyAutoControlsToCamera()
         {
             bool autoExp = AutoExposureCheck.IsChecked == true && _autoExposureSupported;
+            long targetExposure = autoExp ? (long)ExposureSlider.Value : _manualExposureValue;
 
             if (_autoExposureSupported) {
-                _camera.SetCameraControlValue(CameraControlProperty.Exposure, (long)ExposureSlider.Value, autoExp);
+                _camera.SetCameraControlValue(CameraControlProperty.Exposure, targetExposure, autoExp);
             } else {
-                _camera.SetExposure((long)ExposureSlider.Value);
+                _camera.SetExposure(targetExposure);
+            }
+
+            if (!autoExp) {
+                ApplyManualGainFromUi();
+            }
+        }
+
+        private void ApplyManualGainFromUi()
+        {
+            if (_autoExposureSupported && AutoExposureCheck.IsChecked == true) {
+                return;
+            }
+
+            int gain = (int)GainSlider.Value;
+            bool ok = _camera.SetGain(gain);
+            GainValue.Foreground = ok ? System.Windows.Media.Brushes.White : System.Windows.Media.Brushes.OrangeRed;
+            if (!ok && !_gainSetWarningShown) {
+                _gainSetWarningShown = true;
+                Log("Warning: Gain control was rejected by camera/driver. Check UVC gain support.");
             }
         }
 
@@ -769,6 +791,8 @@ namespace CameraDemo
 
             ExposureSlider.IsEnabled = !autoExp && !_isRecording && !_isBatchSaving;
             ExposureValue.IsEnabled = !autoExp && !_isRecording && !_isBatchSaving;
+            GainSlider.IsEnabled = !autoExp && !_isRecording && !_isBatchSaving;
+            GainValue.IsEnabled = !autoExp && !_isRecording && !_isBatchSaving;
         }
 
         private void UpdateExposureDisplay(long raw)
@@ -1455,6 +1479,9 @@ namespace CameraDemo
             _syncingExposureSliders = true;
             _syncingExposureSliders = false;
             UpdateExposureDisplay(val);
+            if (AutoExposureCheck.IsChecked != true) {
+                _manualExposureValue = val;
+            }
             bool ok = _autoExposureSupported
                 ? _camera.SetCameraControlValue(CameraControlProperty.Exposure, val, AutoExposureCheck.IsChecked == true)
                 : _camera.SetExposure(val);

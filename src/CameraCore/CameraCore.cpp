@@ -731,6 +731,21 @@ extern "C" {
         return result;
     }
 
+    CAMERASDK_API int Camera_GetProcAmpValue(int property, long* pValue, long* pFlags) {
+        if (!g_initialized || !g_pSource) return CAM_ERROR_DEVICE_NOT_FOUND;
+        if (!pValue || !pFlags) return CAM_ERROR_INVALID_PARAMETER;
+
+        IAMVideoProcAmp* pProcAmp = NULL;
+        int result = CAM_ERROR_CAPTURE_FAILED;
+        if (SUCCEEDED(g_pSource->QueryInterface(IID_PPV_ARGS(&pProcAmp)))) {
+            if (SUCCEEDED(pProcAmp->Get((VideoProcAmpProperty)property, pValue, pFlags))) {
+                result = CAM_SUCCESS;
+            }
+            pProcAmp->Release();
+        }
+        return result;
+    }
+
     CAMERASDK_API int Camera_SetProcAmpValue(int property, long value, int useAuto) {
         if (!g_initialized || !g_pSource) return CAM_ERROR_DEVICE_NOT_FOUND;
 

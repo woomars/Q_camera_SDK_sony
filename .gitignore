@@ -13,3 +13,4 @@ Release/
 .dotnet-home/
 .nuget-packages/
 build-*/
+dist/

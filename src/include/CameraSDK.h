@@ -48,6 +48,7 @@ extern "C" {
     // 1 if currently selected camera is the detected target camera, else 0
     CAMERASDK_API int Camera_IsSelectedCameraTarget();
     CAMERASDK_API int Camera_GetProcAmpRange(int property, long* pMin, long* pMax, long* pStep, long* pDefault, long* pCaps);
+    CAMERASDK_API int Camera_GetProcAmpValue(int property, long* pValue, long* pFlags);
     CAMERASDK_API int Camera_SetProcAmpValue(int property, long value, int useAuto);
     CAMERASDK_API int Camera_GetCameraControlRange(int property, long* pMin, long* pMax, long* pStep, long* pDefault, long* pCaps);
     CAMERASDK_API int Camera_SetCameraControlValue(int property, long value, int useAuto);
