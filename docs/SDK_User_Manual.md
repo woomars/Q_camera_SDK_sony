@@ -29,7 +29,6 @@ dotnet run --project src/CameraDemo/CameraDemo.csproj -c Debug
 
 <img src="./assets/camera_demo_ui.png" alt="현재 CameraDemo UI" width="100%" />
 
-이미지가 보이지 않으면 [원본 이미지 파일](./assets/camera_demo_ui.png)을 직접 열어 확인할 수 있습니다.
 
 - 이미지 파일 경로: `docs/assets/camera_demo_ui.png`
 - 화면 정의 파일: `src/CameraDemo/MainWindow.xaml`
